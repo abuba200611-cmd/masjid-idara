@@ -1,4 +1,5 @@
-import { isAdmin, unauthorized } from "@/lib/admin-auth";
+import { unauthorized } from "@/lib/admin-auth";
+import { canAccessMosque } from "@/lib/access";
 import { createHalaqah, getMosque } from "@/lib/db";
 import { fetchHalaqahInfo } from "@/lib/teacher-app";
 
@@ -8,9 +9,8 @@ import { fetchHalaqahInfo } from "@/lib/teacher-app";
  * للخطأ)، فلو الرمز غلط يرفض الإضافة فوراً بدل ما يحفظ ربطاً معطوباً.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAdmin())) return unauthorized();
-
   const mosqueId = Number((await params).id);
+  if (!(await canAccessMosque(mosqueId))) return unauthorized();
   if (!(await getMosque(mosqueId))) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
 
   const body = (await request.json().catch(() => ({}))) as { inviteCode?: unknown };

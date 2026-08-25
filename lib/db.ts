@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getDatabase } from "@netlify/database";
+import { randomBytes } from "node:crypto";
 
 /*
   نظام إدارة الجامع — طبقة تنظيمية فوق halaqat-tahfeez، قاعدة بيانات
@@ -11,6 +12,21 @@ let dbInstance: ReturnType<typeof getDatabase> | null = null;
 function db(): ReturnType<typeof getDatabase> {
   if (!dbInstance) dbInstance = getDatabase();
   return dbInstance;
+}
+
+/** سرّ توقيع جلسات مدير الجامع — من البيئة إن وُجد، وإلا يُولَّد مرة ويُحفظ */
+export async function sessionSecret(): Promise<string> {
+  const fromEnv = process.env.SESSION_SECRET;
+  if (fromEnv) return fromEnv;
+
+  const rows = await db().sql`SELECT value FROM app_settings WHERE key = 'session_secret'`;
+  if (rows[0]) return rows[0].value as string;
+
+  const generated = randomBytes(32).toString("hex");
+  await db().sql`INSERT INTO app_settings (key, value) VALUES ('session_secret', ${generated})
+    ON CONFLICT (key) DO NOTHING`;
+  const after = await db().sql`SELECT value FROM app_settings WHERE key = 'session_secret'`;
+  return (after[0]?.value as string) ?? generated;
 }
 
 // ————— الجوامع —————
@@ -143,4 +159,40 @@ export async function markAssigned(id: number, halaqahId: number): Promise<void>
     SET status = 'assigned', halaqah_id = ${halaqahId}, assigned_at = now()
     WHERE id = ${id}
   `;
+}
+
+// ————— مدراء الجوامع (كل جامع له مدير خاص، غير المشرف العام) —————
+
+export type MosqueAdmin = { id: number; mosqueId: number; username: string };
+
+/** ينشئ حساب مدير للجامع، أو يستبدل حساب هذا الجامع الحالي لو موجود أصلاً (جامع = مدير واحد) */
+export async function upsertMosqueAdmin(mosqueId: number, username: string, passwordHash: string): Promise<void> {
+  await db().sql`
+    INSERT INTO mosque_admins (mosque_id, username, password_hash)
+    VALUES (${mosqueId}, ${username}, ${passwordHash})
+    ON CONFLICT (mosque_id) DO UPDATE SET username = excluded.username, password_hash = excluded.password_hash
+  `;
+}
+
+export async function findMosqueAdminByUsername(
+  username: string,
+): Promise<{ id: number; mosqueId: number; username: string; passwordHash: string } | null> {
+  const rows = await db().sql`SELECT * FROM mosque_admins WHERE username = ${username}`;
+  const row = rows[0];
+  return row
+    ? { id: row.id, mosqueId: row.mosque_id, username: row.username, passwordHash: row.password_hash }
+    : null;
+}
+
+export async function findMosqueAdminById(id: number): Promise<MosqueAdmin | null> {
+  const rows = await db().sql`SELECT id, mosque_id, username FROM mosque_admins WHERE id = ${id}`;
+  const row = rows[0];
+  return row ? { id: row.id, mosqueId: row.mosque_id, username: row.username } : null;
+}
+
+/** حساب المدير الحالي لهذا الجامع، إن وُجد — لعرضه بلوحة المشرف العام */
+export async function getMosqueAdminForMosque(mosqueId: number): Promise<MosqueAdmin | null> {
+  const rows = await db().sql`SELECT id, mosque_id, username FROM mosque_admins WHERE mosque_id = ${mosqueId}`;
+  const row = rows[0];
+  return row ? { id: row.id, mosqueId: row.mosque_id, username: row.username } : null;
 }

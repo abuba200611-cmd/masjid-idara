@@ -16,11 +16,13 @@ type Pending = {
   createdAt: string;
 };
 
+type Role = "super" | "mosque" | null;
+
 export default function MosqueDetailPage() {
   const params = useParams<{ id: string }>();
   const mosqueId = Number(params.id);
 
-  const [admin, setAdmin] = useState<boolean | null>(null);
+  const [role, setRole] = useState<Role | "checking">("checking");
   const [data, setData] = useState<{ mosque: Mosque; halaqahs: Halaqah[]; pending: Pending[] } | null>(null);
   const [inviteCode, setInviteCode] = useState("");
   const [addBusy, setAddBusy] = useState(false);
@@ -35,15 +37,29 @@ export default function MosqueDetailPage() {
   }
 
   useEffect(() => {
-    fetch("/api/admin/me")
-      .then((res) => res.json())
-      .then((d: { admin: boolean }) => {
-        setAdmin(d.admin);
-        if (d.admin) load();
-      })
-      .catch(() => setAdmin(false));
+    async function check() {
+      const superRes = await fetch("/api/admin/me").then((r) => r.json());
+      if (superRes.admin) {
+        setRole("super");
+        load();
+        return;
+      }
+      const mosqueRes = await fetch("/api/mosque-admin/me").then((r) => r.json());
+      if (mosqueRes.admin && mosqueRes.admin.mosqueId === mosqueId) {
+        setRole("mosque");
+        load();
+        return;
+      }
+      setRole(null);
+    }
+    check().catch(() => setRole(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mosqueId]);
+
+  async function logout() {
+    await fetch(role === "mosque" ? "/api/mosque-admin/logout" : "/api/admin/logout", { method: "POST" });
+    setRole(null);
+  }
 
   async function addHalaqah(event: React.FormEvent) {
     event.preventDefault();
@@ -78,14 +94,19 @@ export default function MosqueDetailPage() {
     }
   }
 
-  if (admin === null) return <Empty title="جارٍ التحقق…" />;
-  if (!admin) {
+  if (role === "checking") return <Empty title="جارٍ التحقق…" />;
+  if (!role) {
     return (
       <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4 py-10 text-center">
         <p className="mb-3 text-sm text-muted-foreground">سجّل دخولك أولاً.</p>
-        <Link href="/" className="text-sm text-primary hover:underline">
-          الرجوع لتسجيل الدخول
-        </Link>
+        <div className="flex justify-center gap-4">
+          <Link href="/" className="text-sm text-primary hover:underline">
+            دخول المشرف العام
+          </Link>
+          <Link href="/mosque-login" className="text-sm text-primary hover:underline">
+            دخول مدير الجامع
+          </Link>
+        </div>
       </main>
     );
   }
@@ -97,14 +118,23 @@ export default function MosqueDetailPage() {
     <>
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-          <Link href="/" className="font-naskh text-lg font-bold text-primary">
-            إدارة الجامع
-          </Link>
+          {role === "super" ? (
+            <Link href="/" className="font-naskh text-lg font-bold text-primary">
+              إدارة الجامع
+            </Link>
+          ) : (
+            <span className="font-naskh text-lg font-bold text-primary">إدارة الجامع</span>
+          )}
           <span className="text-sm text-muted-foreground">— {data.mosque.name}</span>
+          <Button variant="ghost" onClick={logout} className="mr-auto">
+            خروج
+          </Button>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6">
+        {role === "super" && <MosqueAdminAccountCard mosqueId={mosqueId} />}
+
         <Card className="p-4">
           <p className="mb-2 text-sm font-semibold">رابط تسجيل الجامع</p>
           <p className="mb-3 text-xs text-muted-foreground">
@@ -244,5 +274,85 @@ function PendingRow({
         {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
       </Card>
     </li>
+  );
+}
+
+/** يظهر للمشرف العام فقط — ينشئ/يعيد ضبط حساب مدير هذا الجامع تحديداً */
+function MosqueAdminAccountCard({ mosqueId }: { mosqueId: number }) {
+  const [existing, setExisting] = useState<{ username: string } | null | undefined>(undefined);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/mosques/${mosqueId}/admin-account`)
+      .then((res) => (res.ok ? res.json() : { admin: null }))
+      .then((d: { admin: { username: string } | null }) => setExisting(d.admin))
+      .catch(() => setExisting(null));
+  }, [mosqueId]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const res = await fetch(`/api/mosques/${mosqueId}/admin-account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string; username?: string };
+      if (!res.ok) {
+        setError(d.error ?? "تعذّر الحفظ");
+        return;
+      }
+      setExisting({ username: d.username ?? username });
+      setPassword("");
+      setSaved(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <h2 className="mb-2 text-sm font-semibold">حساب مدير الجامع</h2>
+      <p className="mb-3 text-xs text-muted-foreground">
+        يقدر يدير حلقات هذا الجامع وطلابه بنفسه (رابط دخوله: <span className="tabular">/mosque-login</span>) —
+        بلا حاجة لك.
+        {existing && (
+          <>
+            {" "}
+            حالياً: <span className="font-semibold text-foreground">{existing.username}</span>
+          </>
+        )}
+      </p>
+      <form onSubmit={submit} className="grid gap-2 sm:grid-cols-3">
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="اسم مستخدم جديد"
+          required
+          className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="كلمة مرور (٨ أحرف فأكثر)"
+          minLength={8}
+          required
+          className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        />
+        <Button type="submit" disabled={busy}>
+          {busy ? "لحظة…" : existing ? "استبدال" : "إنشاء"}
+        </Button>
+      </form>
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      {saved && <p className="mt-2 text-sm text-success">تم الحفظ ✓</p>}
+    </Card>
   );
 }
