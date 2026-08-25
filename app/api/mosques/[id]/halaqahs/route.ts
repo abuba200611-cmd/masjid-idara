@@ -1,0 +1,27 @@
+import { isAdmin, unauthorized } from "@/lib/admin-auth";
+import { createHalaqah, getMosque } from "@/lib/db";
+import { fetchHalaqahInfo } from "@/lib/teacher-app";
+
+/**
+ * يضيف حلقة للجامع عن طريق رمز دعوتها بنظام المعلّم — يتحقق من صحة
+ * الرمز أولاً ويجيب اسم الحلقة/المعلّم منه مباشرة (لا إدخال يدوي عرضة
+ * للخطأ)، فلو الرمز غلط يرفض الإضافة فوراً بدل ما يحفظ ربطاً معطوباً.
+ */
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isAdmin())) return unauthorized();
+
+  const mosqueId = Number((await params).id);
+  if (!(await getMosque(mosqueId))) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
+
+  const body = (await request.json().catch(() => ({}))) as { inviteCode?: unknown };
+  const inviteCode = String(body.inviteCode ?? "").trim();
+  if (!inviteCode) return Response.json({ error: "رمز الدعوة مطلوب" }, { status: 400 });
+
+  const info = await fetchHalaqahInfo(inviteCode);
+  if (!info) {
+    return Response.json({ error: "رمز الدعوة غير صحيح، أو نظام المعلّم غير متاح حالياً" }, { status: 400 });
+  }
+
+  const id = await createHalaqah(mosqueId, info.halaqahName, info.teacherName, inviteCode);
+  return Response.json({ ok: true, id, halaqahName: info.halaqahName, teacherName: info.teacherName });
+}
