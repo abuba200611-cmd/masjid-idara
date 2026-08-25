@@ -186,15 +186,18 @@ export default function MosqueDetailPage() {
             <ul className="grid gap-2 sm:grid-cols-2">
               {data.halaqahs.map((h) => (
                 <li key={h.id}>
-                  <Card className="flex items-center gap-3 p-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <BookIcon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">{h.halaqahName}</p>
-                      {h.teacherName && <p className="truncate text-xs text-muted-foreground">{h.teacherName}</p>}
-                    </div>
-                  </Card>
+                  <Link href={`/mosque/${mosqueId}/halaqah/${h.id}`}>
+                    <Card className="flex items-center gap-3 p-3 transition-shadow duration-200 hover:shadow-[0_4px_14px_rgba(19,78,74,0.08)]">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <BookIcon className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold">{h.halaqahName}</p>
+                        {h.teacherName && <p className="truncate text-xs text-muted-foreground">{h.teacherName}</p>}
+                      </div>
+                      <span className="text-sm text-primary">←</span>
+                    </Card>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -448,8 +451,12 @@ function MosqueStatsSection({ mosqueId }: { mosqueId: number }) {
           </thead>
           <tbody className="divide-y divide-border">
             {stats.perHalaqah.map((h) => (
-              <tr key={h.id}>
-                <td className="px-3 py-2 font-medium">{h.halaqahName}</td>
+              <tr key={h.id} className="transition-colors duration-200 hover:bg-muted/40">
+                <td className="px-3 py-2 font-medium">
+                  <Link href={`/mosque/${mosqueId}/halaqah/${h.id}`} className="text-primary hover:underline">
+                    {h.halaqahName}
+                  </Link>
+                </td>
                 <td className="px-3 py-2 text-muted-foreground">{h.teacherName}</td>
                 {h.stats ? (
                   <>

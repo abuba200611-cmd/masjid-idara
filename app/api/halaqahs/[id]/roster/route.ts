@@ -1,0 +1,19 @@
+import { unauthorized } from "@/lib/admin-auth";
+import { canAccessMosque } from "@/lib/access";
+import { getHalaqah } from "@/lib/db";
+import { fetchHalaqahRoster } from "@/lib/teacher-app";
+
+/** قائمة طلاب حلقة بعينها (بالاسم) + اسم معلّمها — من نظام المعلّم حيّاً */
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const halaqahId = Number((await params).id);
+  const halaqah = await getHalaqah(halaqahId);
+  if (!halaqah) return Response.json({ error: "الحلقة غير موجودة" }, { status: 404 });
+  if (!(await canAccessMosque(halaqah.mosqueId))) return unauthorized();
+
+  const roster = await fetchHalaqahRoster(halaqah.inviteCode);
+  if (!roster) {
+    return Response.json({ error: "تعذّر الوصول لنظام المعلّم حالياً" }, { status: 502 });
+  }
+
+  return Response.json({ halaqah, roster });
+}

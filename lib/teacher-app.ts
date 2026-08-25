@@ -48,6 +48,24 @@ export async function fetchHalaqahStats(inviteCode: string): Promise<HalaqahStat
   }
 }
 
+export type RosterStudent = { name: string; group: string; pages: number; avgMastery: number; active: boolean };
+export type Roster = { teacherName: string; halaqahName: string; students: RosterStudent[] };
+
+/** قائمة طلاب الحلقة بالاسم — لعرضها بصفحة تفاصيل الحلقة */
+export async function fetchHalaqahRoster(inviteCode: string): Promise<Roster | null> {
+  const { url, secret } = requireConfig();
+  try {
+    const res = await fetch(`${url}/api/link/roster?code=${encodeURIComponent(inviteCode)}`, {
+      headers: { "x-link-secret": secret },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Roster;
+  } catch {
+    return null;
+  }
+}
+
 /** يضيف الطالب فعلياً لقائمة معلّم حلقته بنظام المعلّم — الخطوة الفعلية عند التوزيع */
 export async function addStudentToTeacherApp(inviteCode: string, studentName: string): Promise<boolean> {
   const { url, secret } = requireConfig();
