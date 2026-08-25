@@ -31,6 +31,23 @@ export async function fetchHalaqahInfo(
   }
 }
 
+export type HalaqahStats = { activeStudents: number; totalPages: number; avgPages: number; avgMastery: number };
+
+/** إحصائيات حلقة (طلاب نشطون، متوسط محفوظ وإتقان) — تُبنى منها إحصائيات الجامع */
+export async function fetchHalaqahStats(inviteCode: string): Promise<HalaqahStats | null> {
+  const { url, secret } = requireConfig();
+  try {
+    const res = await fetch(`${url}/api/link/stats?code=${encodeURIComponent(inviteCode)}`, {
+      headers: { "x-link-secret": secret },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as HalaqahStats;
+  } catch {
+    return null;
+  }
+}
+
 /** يضيف الطالب فعلياً لقائمة معلّم حلقته بنظام المعلّم — الخطوة الفعلية عند التوزيع */
 export async function addStudentToTeacherApp(inviteCode: string, studentName: string): Promise<boolean> {
   const { url, secret } = requireConfig();

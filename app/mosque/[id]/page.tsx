@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Badge, Button, Card, Empty } from "@/components/ui";
+import { Badge, Button, Card, Empty, Stat } from "@/components/ui";
 
 type Mosque = { id: number; name: string; city: string };
 type Halaqah = { id: number; halaqahName: string; teacherName: string; inviteCode: string };
@@ -133,6 +133,9 @@ export default function MosqueDetailPage() {
       </header>
 
       <main className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6">
+        <h1 className="font-naskh text-xl font-bold">إحصائيات الجامع</h1>
+        <MosqueStatsSection mosqueId={mosqueId} />
+
         {role === "super" && <MosqueAdminAccountCard mosqueId={mosqueId} />}
 
         <Card className="p-4">
@@ -354,5 +357,91 @@ function MosqueAdminAccountCard({ mosqueId }: { mosqueId: number }) {
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
       {saved && <p className="mt-2 text-sm text-success">تم الحفظ ✓</p>}
     </Card>
+  );
+}
+
+type Stats = {
+  halaqahCount: number;
+  unreachableCount: number;
+  totalActiveStudents: number;
+  totalPages: number;
+  avgMastery: number;
+  perHalaqah: {
+    id: number;
+    halaqahName: string;
+    teacherName: string;
+    stats: { activeStudents: number; totalPages: number; avgPages: number; avgMastery: number } | null;
+  }[];
+};
+
+/**
+ * اللوحة الحقيقية — أرقام حية من نظام المعلّم (لا بيانات مخزّنة هنا)،
+ * تُحدَّث كل ما فُتحت الصفحة. حلقة يتعذّر الوصول لها تظهر بشارة بدل
+ * ما تكسر الإجمالي.
+ */
+function MosqueStatsSection({ mosqueId }: { mosqueId: number }) {
+  const [stats, setStats] = useState<Stats | null | undefined>(undefined);
+
+  useEffect(() => {
+    fetch(`/api/mosques/${mosqueId}/stats`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then(setStats)
+      .catch(() => setStats(null));
+  }, [mosqueId]);
+
+  if (stats === undefined) return <Empty title="جارٍ حساب الإحصائيات…" />;
+  if (!stats || stats.halaqahCount === 0) {
+    return <Empty title="ما فيه حلقات مضافة بعد — الإحصائيات تظهر بعد إضافة أول حلقة." />;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="الحلقات" value={stats.halaqahCount} />
+        <Stat label="الطلاب النشطون" value={stats.totalActiveStudents} hint="بكل حلقات الجامع" />
+        <Stat label="متوسط الإتقان" value={`${stats.avgMastery}٪`} hint="محسوب من التسميعات" />
+        <Stat label="إجمالي المحفوظ" value={stats.totalPages.toLocaleString("en")} hint="صفحة بالجامع كله" />
+      </div>
+      {stats.unreachableCount > 0 && (
+        <p className="text-xs text-accent">
+          تعذّر جلب إحصائيات {stats.unreachableCount} حلقة مؤقتاً — الإجمالي أعلاه يستثنيها.
+        </p>
+      )}
+
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[32rem] text-right text-sm">
+          <thead className="border-b border-border bg-muted/50">
+            <tr className="text-xs text-muted-foreground">
+              <th className="px-3 py-2 font-medium">الحلقة</th>
+              <th className="px-3 py-2 font-medium">المعلّم</th>
+              <th className="px-3 py-2 font-medium">الطلاب</th>
+              <th className="px-3 py-2 font-medium">متوسط الإتقان</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {stats.perHalaqah.map((h) => (
+              <tr key={h.id}>
+                <td className="px-3 py-2 font-medium">{h.halaqahName}</td>
+                <td className="px-3 py-2 text-muted-foreground">{h.teacherName}</td>
+                {h.stats ? (
+                  <>
+                    <td className="tabular px-3 py-2">{h.stats.activeStudents}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={h.stats.avgMastery >= 75 ? "good" : h.stats.avgMastery >= 55 ? "neutral" : "warn"}>
+                        {h.stats.avgMastery}٪
+                      </Badge>
+                    </td>
+                  </>
+                ) : (
+                  <td className="px-3 py-2" colSpan={2}>
+                    <Badge tone="warn">غير متاح حالياً</Badge>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
   );
 }
