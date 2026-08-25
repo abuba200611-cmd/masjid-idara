@@ -1,16 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { HomeIcon, LogoutIcon } from "./icons";
+import { LogoutIcon, MenuIcon, XIcon } from "./icons";
 
 type NavItem = { href: string; label: string; icon: ReactNode; active?: boolean };
 
 /**
- * قالب لوحة SaaS: سايدبار أيقونات + شريط علوي بعنوان الصفحة، مستقل تماماً
- * عن شاشات الدخول والتسجيل العام (تلك تبقى بسيطة بلا هذا الإطار — طلب
- * المستخدم إبقاء "نظام الجامع" (التسجيل العام) و"نظام الإدارة" (هذي
- * اللوحة) منفصلين شكلياً، كل واحد بطابعه الخاص).
+ * قالب لوحة SaaS: سايدبار داكن كامل (شعار + قائمة أيقونة/تسمية + بطاقة
+ * المستخدم بالأسفل) — ثابت بعرضه على الشاشات الواسعة، ويتحوّل على
+ * الجوال لدرج منزلق (overlay) يُفتح بزر بالشريط العلوي بدل ما يزاحم
+ * المحتوى بعرض ثابت (كان يترك عمود ضيق جداً على شاشة 375px).
  */
 export function DashboardShell({
   nav,
@@ -27,54 +27,98 @@ export function DashboardShell({
   onLogout: () => void;
   children: ReactNode;
 }) {
-  return (
-    <div className="flex min-h-screen w-full">
-      <aside className="flex w-16 shrink-0 flex-col items-center gap-2 border-l border-border bg-surface py-5">
-        <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-xl bg-primary font-naskh text-sm font-bold text-on-primary">
-          ج
+  const [open, setOpen] = useState(false);
+
+  const sidebarContent = (
+    <>
+      <div className="mb-6 flex items-center justify-between px-2">
+        <div>
+          <p className="font-naskh text-lg font-bold">إدارة الجامع</p>
+          <p className="text-xs text-white/60">لوحة القيادة</p>
         </div>
+        <button
+          onClick={() => setOpen(false)}
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
+        >
+          <XIcon className="h-5 w-5" />
+        </button>
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-1">
         {nav.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            title={item.label}
-            className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
-              item.active
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => setOpen(false)}
+            className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors duration-200 ${
+              item.active ? "bg-white/15 font-semibold text-white" : "text-white/70 hover:bg-white/10 hover:text-white"
             }`}
           >
-            {item.icon}
+            <span className="shrink-0">{item.icon}</span>
+            <span className="truncate">{item.label}</span>
           </Link>
         ))}
-        <button
-          onClick={onLogout}
-          title="خروج"
-          className="mt-auto flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          <LogoutIcon />
-        </button>
+      </nav>
+
+      {userLabel && (
+        <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-white/10 px-3 py-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary font-naskh text-xs font-bold text-on-primary">
+            {userLabel.trim().charAt(0) || "؟"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-white">{userLabel}</p>
+          </div>
+          <button
+            onClick={onLogout}
+            title="خروج"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition-colors duration-200 hover:bg-white/15 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          >
+            <LogoutIcon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="flex min-h-screen w-full">
+      {/* سايدبار ثابت — شاشات واسعة فقط */}
+      <aside className="hidden w-60 shrink-0 flex-col bg-foreground px-3 py-5 text-white lg:flex">
+        {sidebarContent}
       </aside>
 
+      {/* درج منزلق — جوال/تابلت */}
+      {open && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            aria-label="إغلاق القائمة"
+            onClick={() => setOpen(false)}
+            className="absolute inset-0 cursor-default bg-black/40"
+          />
+          <aside className="absolute inset-y-0 right-0 flex w-64 max-w-[80vw] flex-col bg-foreground px-3 py-5 text-white shadow-xl">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
       <div className="min-w-0 flex-1">
-        <header className="border-b border-border bg-surface px-6 py-4">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-            <div>
-              <h1 className="font-naskh text-xl font-bold text-foreground">{title}</h1>
-              {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+        <header className="border-b border-border bg-surface px-4 py-4 sm:px-6">
+          <div className="mx-auto flex max-w-5xl items-center gap-3">
+            <button
+              onClick={() => setOpen(true)}
+              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              aria-label="فتح القائمة"
+            >
+              <MenuIcon className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="truncate font-naskh text-xl font-bold text-foreground">{title}</h1>
+              {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
             </div>
-            {userLabel && (
-              <div className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <HomeIcon className="h-3.5 w-3.5" />
-                </span>
-                {userLabel}
-              </div>
-            )}
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-5xl px-6 py-6">{children}</main>
+        <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">{children}</main>
       </div>
     </div>
   );
