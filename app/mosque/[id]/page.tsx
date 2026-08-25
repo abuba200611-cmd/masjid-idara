@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Badge, Button, Card, Empty, Stat } from "@/components/ui";
+import { DashboardShell } from "@/components/shell";
+import { BookIcon, HomeIcon, LinkIcon, ShieldIcon, TrendUpIcon, UsersIcon } from "@/components/icons";
 
 type Mosque = { id: number; name: string; city: string };
 type Halaqah = { id: number; halaqahName: string; teacherName: string; inviteCode: string };
@@ -115,31 +117,30 @@ export default function MosqueDetailPage() {
   const registrationLink = `/j/${mosqueId}`;
 
   return (
-    <>
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-          {role === "super" ? (
-            <Link href="/" className="font-naskh text-lg font-bold text-primary">
-              إدارة الجامع
-            </Link>
-          ) : (
-            <span className="font-naskh text-lg font-bold text-primary">إدارة الجامع</span>
-          )}
-          <span className="text-sm text-muted-foreground">— {data.mosque.name}</span>
-          <Button variant="ghost" onClick={logout} className="mr-auto">
-            خروج
-          </Button>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6">
-        <h1 className="font-naskh text-xl font-bold">إحصائيات الجامع</h1>
+    <DashboardShell
+      nav={
+        role === "super"
+          ? [
+              { href: "/", label: "كل الجوامع", icon: <HomeIcon /> },
+              { href: `/mosque/${mosqueId}`, label: data.mosque.name, icon: <ShieldIcon />, active: true },
+            ]
+          : [{ href: `/mosque/${mosqueId}`, label: data.mosque.name, icon: <ShieldIcon />, active: true }]
+      }
+      title={data.mosque.name}
+      subtitle={data.mosque.city || "لوحة الجامع"}
+      userLabel={role === "super" ? "المشرف العام" : "مدير الجامع"}
+      onLogout={logout}
+    >
+      <div className="space-y-5">
         <MosqueStatsSection mosqueId={mosqueId} />
 
         {role === "super" && <MosqueAdminAccountCard mosqueId={mosqueId} />}
 
         <Card className="p-4">
-          <p className="mb-2 text-sm font-semibold">رابط تسجيل الجامع</p>
+          <div className="mb-2 flex items-center gap-2">
+            <LinkIcon className="h-4 w-4 text-primary" />
+            <p className="text-sm font-semibold">رابط تسجيل الجامع</p>
+          </div>
           <p className="mb-3 text-xs text-muted-foreground">
             شاركه مع طلاب الجامع الجدد — يسجّلون اهتمامهم بدون اختيار حلقة، وتوزّعهم أنت من هنا.
           </p>
@@ -148,7 +149,7 @@ export default function MosqueDetailPage() {
               readOnly
               value={typeof window === "undefined" ? registrationLink : `${window.location.origin}${registrationLink}`}
               onFocus={(e) => e.currentTarget.select()}
-              className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-muted-foreground"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-muted-foreground"
             />
             <Button onClick={copyLink} className="shrink-0">
               {copied ? "نُسخ ✓" : "نسخ"}
@@ -168,7 +169,7 @@ export default function MosqueDetailPage() {
               onChange={(e) => setInviteCode(e.target.value)}
               placeholder="رمز دعوة الحلقة"
               required
-              className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             />
             <Button type="submit" disabled={addBusy} className="shrink-0">
               {addBusy ? "لحظة…" : "إضافة"}
@@ -177,36 +178,45 @@ export default function MosqueDetailPage() {
           {addError && <p className="mt-2 text-sm text-destructive">{addError}</p>}
         </Card>
 
-        <h2 className="font-naskh text-lg font-bold">الحلقات ({data.halaqahs.length})</h2>
-        {data.halaqahs.length === 0 ? (
-          <Empty title="ما فيه حلقات مضافة بعد." />
-        ) : (
-          <ul className="space-y-2">
-            {data.halaqahs.map((h) => (
-              <li key={h.id}>
-                <Card className="p-3">
-                  <p className="font-semibold">{h.halaqahName}</p>
-                  {h.teacherName && <p className="text-xs text-muted-foreground">{h.teacherName}</p>}
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div>
+          <h2 className="mb-3 font-naskh text-lg font-bold">الحلقات ({data.halaqahs.length})</h2>
+          {data.halaqahs.length === 0 ? (
+            <Empty title="ما فيه حلقات مضافة بعد." />
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {data.halaqahs.map((h) => (
+                <li key={h.id}>
+                  <Card className="flex items-center gap-3 p-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <BookIcon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{h.halaqahName}</p>
+                      {h.teacherName && <p className="truncate text-xs text-muted-foreground">{h.teacherName}</p>}
+                    </div>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-        <h2 className="font-naskh text-lg font-bold">
-          طلاب بانتظار التوزيع ({data.pending.filter((p) => p.status === "pending").length})
-        </h2>
-        {data.pending.length === 0 ? (
-          <Empty title="ما فيه تسجيلات جديدة بعد." />
-        ) : (
-          <ul className="space-y-2">
-            {data.pending.map((p) => (
-              <PendingRow key={p.id} pending={p} halaqahs={data.halaqahs} onAssigned={load} />
-            ))}
-          </ul>
-        )}
-      </main>
-    </>
+        <div>
+          <h2 className="mb-3 font-naskh text-lg font-bold">
+            طلاب بانتظار التوزيع ({data.pending.filter((p) => p.status === "pending").length})
+          </h2>
+          {data.pending.length === 0 ? (
+            <Empty title="ما فيه تسجيلات جديدة بعد." />
+          ) : (
+            <ul className="space-y-2">
+              {data.pending.map((p) => (
+                <PendingRow key={p.id} pending={p} halaqahs={data.halaqahs} onAssigned={load} />
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </DashboardShell>
   );
 }
 
@@ -260,7 +270,7 @@ function PendingRow({
               <select
                 value={halaqahId}
                 onChange={(e) => setHalaqahId(e.target.value)}
-                className="rounded-md border border-border bg-surface px-2 py-1 text-sm"
+                className="rounded-xl border border-border bg-background px-2 py-1.5 text-sm"
               >
                 {halaqahs.map((h) => (
                   <option key={h.id} value={h.id}>
@@ -322,7 +332,10 @@ function MosqueAdminAccountCard({ mosqueId }: { mosqueId: number }) {
 
   return (
     <Card className="p-4">
-      <h2 className="mb-2 text-sm font-semibold">حساب مدير الجامع</h2>
+      <div className="mb-2 flex items-center gap-2">
+        <ShieldIcon className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">حساب مدير الجامع</h2>
+      </div>
       <p className="mb-3 text-xs text-muted-foreground">
         يقدر يدير حلقات هذا الجامع وطلابه بنفسه (رابط دخوله: <span className="tabular">/mosque-login</span>) —
         بلا حاجة لك.
@@ -339,7 +352,7 @@ function MosqueAdminAccountCard({ mosqueId }: { mosqueId: number }) {
           onChange={(e) => setUsername(e.target.value)}
           placeholder="اسم مستخدم جديد"
           required
-          className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
         <input
           type="password"
@@ -348,7 +361,7 @@ function MosqueAdminAccountCard({ mosqueId }: { mosqueId: number }) {
           placeholder="كلمة مرور (٨ أحرف فأكثر)"
           minLength={8}
           required
-          className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
         <Button type="submit" disabled={busy}>
           {busy ? "لحظة…" : existing ? "استبدال" : "إنشاء"}
@@ -397,10 +410,25 @@ function MosqueStatsSection({ mosqueId }: { mosqueId: number }) {
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="الحلقات" value={stats.halaqahCount} />
-        <Stat label="الطلاب النشطون" value={stats.totalActiveStudents} hint="بكل حلقات الجامع" />
-        <Stat label="متوسط الإتقان" value={`${stats.avgMastery}٪`} hint="محسوب من التسميعات" />
-        <Stat label="إجمالي المحفوظ" value={stats.totalPages.toLocaleString("en")} hint="صفحة بالجامع كله" />
+        <Stat label="الحلقات" value={stats.halaqahCount} icon={<BookIcon className="h-4 w-4" />} tone="primary" />
+        <Stat
+          label="الطلاب النشطون"
+          value={stats.totalActiveStudents}
+          hint="بكل حلقات الجامع"
+          icon={<UsersIcon className="h-4 w-4" />}
+        />
+        <Stat
+          label="متوسط الإتقان"
+          value={`${stats.avgMastery}٪`}
+          hint="محسوب من التسميعات"
+          icon={<TrendUpIcon className="h-4 w-4" />}
+        />
+        <Stat
+          label="إجمالي المحفوظ"
+          value={stats.totalPages.toLocaleString("en")}
+          hint="صفحة بالجامع كله"
+          icon={<BookIcon className="h-4 w-4" />}
+        />
       </div>
       {stats.unreachableCount > 0 && (
         <p className="text-xs text-accent">

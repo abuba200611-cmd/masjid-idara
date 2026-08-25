@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, Card, Empty } from "@/components/ui";
+import { Button, Card, Empty, Stat } from "@/components/ui";
+import { DashboardShell } from "@/components/shell";
+import { BuildingIcon, HomeIcon, PlusIcon } from "@/components/icons";
 
 type Mosque = { id: number; name: string; city: string; createdAt: string };
 
@@ -61,7 +63,7 @@ function AdminLogin({ onIn }: { onIn: () => void }) {
             placeholder="كلمة السر"
             autoFocus
             required
-            className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={busy} className="w-full">
@@ -121,17 +123,30 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   }
 
   return (
-    <>
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-          <span className="font-naskh text-lg font-bold text-primary">إدارة الجامع</span>
-          <Button variant="ghost" onClick={logout} className="mr-auto">
-            خروج
-          </Button>
+    <DashboardShell
+      nav={[{ href: "/", label: "الرئيسية", icon: <HomeIcon />, active: true }]}
+      title="أهلاً بك 👋"
+      subtitle="نظرة عامة على كل الجوامع اللي تديرها"
+      userLabel="المشرف العام"
+      onLogout={logout}
+    >
+      <div className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Stat
+            label="عدد الجوامع"
+            value={mosques?.length ?? "—"}
+            icon={<BuildingIcon className="h-4 w-4" />}
+            tone="primary"
+          />
+          <Card className="flex items-center justify-between p-4">
+            <div>
+              <p className="text-sm font-semibold">إضافة جامع جديد</p>
+              <p className="text-xs text-muted-foreground">اسم الجامع كافٍ للبدء</p>
+            </div>
+            <PlusIcon className="h-5 w-5 text-primary" />
+          </Card>
         </div>
-      </header>
 
-      <main className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6">
         <Card className="p-4">
           <h2 className="mb-3 text-sm font-semibold">إضافة جامع جديد</h2>
           <form onSubmit={submit} className="grid gap-3 sm:grid-cols-3">
@@ -140,13 +155,13 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
               onChange={(e) => setName(e.target.value)}
               placeholder="اسم الجامع"
               required
-              className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             />
             <input
               value={city}
               onChange={(e) => setCity(e.target.value)}
               placeholder="المدينة (اختياري)"
-              className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             />
             <Button type="submit" disabled={busy}>
               {busy ? "لحظة…" : "إضافة"}
@@ -155,29 +170,34 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
           {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
         </Card>
 
-        <h1 className="font-naskh text-xl font-bold">الجوامع</h1>
-        {mosques === null ? (
-          <Empty title="جارٍ التحميل…" />
-        ) : mosques.length === 0 ? (
-          <Empty title="ما فيه جوامع بعد — أضف أول واحد فوق." />
-        ) : (
-          <ul className="space-y-2">
-            {mosques.map((m) => (
-              <li key={m.id}>
-                <Link href={`/mosque/${m.id}`}>
-                  <Card className="flex items-center justify-between p-4 transition-colors duration-200 hover:bg-muted/40">
-                    <div>
-                      <p className="font-semibold">{m.name}</p>
-                      {m.city && <p className="text-xs text-muted-foreground">{m.city}</p>}
-                    </div>
-                    <span className="text-sm text-primary">فتح ←</span>
-                  </Card>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </main>
-    </>
+        <div>
+          <h2 className="mb-3 font-naskh text-lg font-bold">الجوامع</h2>
+          {mosques === null ? (
+            <Empty title="جارٍ التحميل…" />
+          ) : mosques.length === 0 ? (
+            <Empty title="ما فيه جوامع بعد — أضف أول واحد فوق." />
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {mosques.map((m) => (
+                <li key={m.id}>
+                  <Link href={`/mosque/${m.id}`}>
+                    <Card className="flex items-center gap-3 p-4 transition-shadow duration-200 hover:shadow-[0_4px_14px_rgba(19,78,74,0.08)]">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <BuildingIcon className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold">{m.name}</p>
+                        {m.city && <p className="truncate text-xs text-muted-foreground">{m.city}</p>}
+                      </div>
+                      <span className="text-sm text-primary">←</span>
+                    </Card>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </DashboardShell>
   );
 }
