@@ -38,7 +38,14 @@ export default function BrainNotePage() {
   const params = useParams<{ id: string; slug: string }>();
   const router = useRouter();
   const mosqueId = Number(params.id);
-  const slug = String(params.slug);
+  const slug = (() => {
+    // useParams قد يعيد السَلَغ العربي مُرمَّزاً (%D8…) — نفكّه حتى لا يُرمَّز مرتين
+    try {
+      return decodeURIComponent(String(params.slug));
+    } catch {
+      return String(params.slug);
+    }
+  })();
 
   const [role, setRole] = useState<Role | "checking">("checking");
   const [mosque, setMosque] = useState<Mosque | null>(null);
