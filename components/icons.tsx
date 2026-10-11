@@ -101,3 +101,35 @@ export function XIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function SettingsIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <circle cx="12" cy="12" r="3" />
+      <path
+        d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function BrainIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <circle cx="6" cy="6" r="2.2" />
+      <circle cx="18" cy="7.5" r="2.2" />
+      <circle cx="12" cy="17" r="2.2" />
+      <path d="M7.7 7.4 16.2 8M7 8 10.8 15.3M17 9.5l-3.8 5.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function SearchIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <circle cx="11" cy="11" r="6" />
+      <path d="m20 20-4.5-4.5" strokeLinecap="round" />
+    </svg>
+  );
+}

@@ -1,17 +1,20 @@
 import { unauthorized } from "@/lib/admin-auth";
 import { canAccessMosque } from "@/lib/access";
-import { listHalaqahs } from "@/lib/db";
+import { isFeatureEnabled, listHalaqahs } from "@/lib/db";
 import { fetchHalaqahStats } from "@/lib/teacher-app";
 
 /**
  * لوحة الجامع الحقيقية — يجمع إحصائيات كل حلقاته من نظام المعلّم (نداءات
  * خادم لخادم متوازية) ويرجع الإجمالي + تفصيل كل حلقة. حلقة تعذّر الوصول
  * لها (نظام المعلّم غير متاح مؤقتاً) تُستبعد من الإجمالي بدل ما تكسر
- * اللوحة كاملة.
+ * اللوحة كاملة. معطّلة "الإحصائيات" عن الجامع = 404.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const mosqueId = Number((await params).id);
   if (!(await canAccessMosque(mosqueId))) return unauthorized();
+  if (!(await isFeatureEnabled(mosqueId, "stats"))) {
+    return Response.json({ error: "الإحصائيات غير مفعّلة لهذا الجامع" }, { status: 404 });
+  }
 
   const halaqahs = await listHalaqahs(mosqueId);
   const results = await Promise.all(

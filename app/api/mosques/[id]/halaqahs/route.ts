@@ -1,6 +1,6 @@
 import { unauthorized } from "@/lib/admin-auth";
 import { canAccessMosque } from "@/lib/access";
-import { createHalaqah, getMosque } from "@/lib/db";
+import { createHalaqah, getMosque, isFeatureEnabled } from "@/lib/db";
 import { fetchHalaqahInfo } from "@/lib/teacher-app";
 
 /**
@@ -12,6 +12,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const mosqueId = Number((await params).id);
   if (!(await canAccessMosque(mosqueId))) return unauthorized();
   if (!(await getMosque(mosqueId))) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
+  if (!(await isFeatureEnabled(mosqueId, "halaqat"))) {
+    return Response.json({ error: "الحلقات غير مفعّلة لهذا الجامع" }, { status: 404 });
+  }
 
   const body = (await request.json().catch(() => ({}))) as { inviteCode?: unknown };
   const inviteCode = String(body.inviteCode ?? "").trim();
