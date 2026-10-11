@@ -1,6 +1,6 @@
 import { unauthorized } from "@/lib/admin-auth";
 import { canAccessMosque } from "@/lib/access";
-import { getHalaqah, getPendingStudent, markAssigned } from "@/lib/db";
+import { getHalaqah, getPendingStudent, isFeatureEnabled, markAssigned } from "@/lib/db";
 import { addStudentToTeacherApp } from "@/lib/teacher-app";
 
 /** يوزّع طالباً بانتظار التوزيع على حلقة — يضيفه فعلياً بنظام المعلّم ثم يعلّمه كمُوزَّع */
@@ -12,6 +12,9 @@ export async function POST(request: Request) {
   const pending = await getPendingStudent(pendingId);
   if (!pending) return Response.json({ error: "الطالب غير موجود" }, { status: 404 });
   if (!(await canAccessMosque(pending.mosqueId))) return unauthorized();
+  if (!(await isFeatureEnabled(pending.mosqueId, "halaqat"))) {
+    return Response.json({ error: "الحلقات غير مفعّلة لهذا الجامع" }, { status: 404 });
+  }
   if (pending.status === "assigned") return Response.json({ error: "هذا الطالب موزَّع أصلاً" }, { status: 409 });
 
   const halaqah = await getHalaqah(halaqahId);

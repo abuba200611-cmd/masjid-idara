@@ -2,6 +2,7 @@ import "server-only";
 
 import { getDatabase } from "@netlify/database";
 import { randomBytes } from "node:crypto";
+import { FEATURES, type Feature } from "./features";
 
 /*
   نظام إدارة الجامع — طبقة تنظيمية فوق halaqat-tahfeez، قاعدة بيانات
@@ -194,5 +195,120 @@ export async function findMosqueAdminById(id: number): Promise<MosqueAdmin | nul
 export async function getMosqueAdminForMosque(mosqueId: number): Promise<MosqueAdmin | null> {
   const rows = await db().sql`SELECT id, mosque_id, username FROM mosque_admins WHERE mosque_id = ${mosqueId}`;
   const row = rows[0];
-  return row ? { id: row.id, mosqueId: row.mosque_id, username: row.username } : null;
+  return row ? { id: row.id as number, mosqueId: row.mosque_id as number, username: row.username as string } : null;
+}
+
+// ————— مزايا كل جامع (السجل في lib/features.ts، والصفوف هنا تجاوزات فقط) —————
+
+export type MosqueFeature = Feature & { enabled: boolean };
+
+/** كل المزايا كما هي فعلياً لهذا الجامع: صف الجدول إن وُجد، وإلا افتراض السجل */
+export async function getMosqueFeatures(mosqueId: number): Promise<MosqueFeature[]> {
+  const rows = await db().sql`SELECT feature_key, enabled FROM mosque_features WHERE mosque_id = ${mosqueId}`;
+  const overrides = new Map(rows.map((row) => [row.feature_key as string, row.enabled as boolean]));
+  return FEATURES.map((feature) => ({ ...feature, enabled: overrides.get(feature.key) ?? feature.defaultEnabled }));
+}
+
+/** مفعّلة؟ ميزة غير معروفة أو "قريباً" لا تكون مفعّلة أبداً */
+export async function isFeatureEnabled(mosqueId: number, key: string): Promise<boolean> {
+  const feature = FEATURES.find((f) => f.key === key);
+  if (!feature || feature.status !== "ready") return false;
+
+  const rows = await db().sql`
+    SELECT enabled FROM mosque_features WHERE mosque_id = ${mosqueId} AND feature_key = ${key}
+  `;
+  return rows[0] ? rows[0].enabled === true : feature.defaultEnabled;
+}
+
+export async function setMosqueFeature(mosqueId: number, key: string, enabled: boolean): Promise<void> {
+  await db().sql`
+    INSERT INTO mosque_features (mosque_id, feature_key, enabled)
+    VALUES (${mosqueId}, ${key}, ${enabled})
+    ON CONFLICT (mosque_id, feature_key) DO UPDATE SET enabled = excluded.enabled, updated_at = now()
+  `;
+}
+
+// ————— الدماغ: ملاحظات الجامع المترابطة —————
+
+export type BrainNote = {
+  id: number;
+  mosqueId: number;
+  slug: string;
+  title: string;
+  body: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+function rowToBrainNote(row: Record<string, unknown>): BrainNote {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    slug: row.slug as string,
+    title: row.title as string,
+    body: row.body as string,
+    tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+export async function listBrainNotes(mosqueId: number): Promise<BrainNote[]> {
+  const rows = await db().sql`
+    SELECT id, mosque_id, slug, title, body, tags, created_at, updated_at
+    FROM brain_notes WHERE mosque_id = ${mosqueId} ORDER BY updated_at DESC
+  `;
+  return rows.map(rowToBrainNote);
+}
+
+export async function getBrainNote(mosqueId: number, slug: string): Promise<BrainNote | null> {
+  const rows = await db().sql`
+    SELECT id, mosque_id, slug, title, body, tags, created_at, updated_at
+    FROM brain_notes WHERE mosque_id = ${mosqueId} AND slug = ${slug}
+  `;
+  const row = rows[0];
+  return row ? rowToBrainNote(row) : null;
+}
+
+/** تنشئ الملاحظة، أو null إن وُجدت أخرى بنفس السَلَغ بنفس الجامع (409 عند المستدعي) */
+export async function createBrainNote(
+  mosqueId: number,
+  note: { slug: string; title: string; body: string; tags: string[] },
+): Promise<BrainNote | null> {
+  if (await getBrainNote(mosqueId, note.slug)) return null;
+
+  const rows = await db().sql`
+    INSERT INTO brain_notes (mosque_id, slug, title, body, tags)
+    VALUES (${mosqueId}, ${note.slug}, ${note.title}, ${note.body}, ${note.tags})
+    RETURNING id, mosque_id, slug, title, body, tags, created_at, updated_at
+  `;
+  return rowToBrainNote(rows[0]);
+}
+
+/**
+ * تحديث ملاحظة — السَلَغ يُعاد اشتقاقه من العنوان الجديد حتى تبقى وصلات
+ * [[بالعنوان]] صحيحة. null إن كان السَلَغ الجديد محجوزاً لملاحظة أخرى.
+ */
+export async function updateBrainNote(
+  mosqueId: number,
+  id: number,
+  changes: { slug: string; title: string; body: string; tags: string[] },
+): Promise<BrainNote | null> {
+  const conflict = await db().sql`
+    SELECT id FROM brain_notes WHERE mosque_id = ${mosqueId} AND slug = ${changes.slug} AND id <> ${id}
+  `;
+  if (conflict[0]) return null;
+
+  const rows = await db().sql`
+    UPDATE brain_notes
+    SET slug = ${changes.slug}, title = ${changes.title}, body = ${changes.body}, tags = ${changes.tags}, updated_at = now()
+    WHERE id = ${id} AND mosque_id = ${mosqueId}
+    RETURNING id, mosque_id, slug, title, body, tags, created_at, updated_at
+  `;
+  return rows[0] ? rowToBrainNote(rows[0]) : null;
+}
+
+export async function deleteBrainNote(mosqueId: number, id: number): Promise<void> {
+  await db().sql`DELETE FROM brain_notes WHERE mosque_id = ${mosqueId} AND id = ${id}`;
 }

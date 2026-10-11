@@ -5,11 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Badge, Card, Empty } from "@/components/ui";
 import { DashboardShell } from "@/components/shell";
-import { BookIcon, HomeIcon, ShieldIcon, UsersIcon } from "@/components/icons";
+import { mosqueNavItems } from "@/components/mosque-nav";
+import { BookIcon, UsersIcon } from "@/components/icons";
 
 type Halaqah = { id: number; mosqueId: number; halaqahName: string; teacherName: string };
 type RosterStudent = { name: string; group: string; pages: number; avgMastery: number; active: boolean };
 type Roster = { teacherName: string; halaqahName: string; students: RosterStudent[] };
+type MosqueInfo = { name: string; features: Record<string, boolean> };
 
 type Role = "super" | "mosque" | null;
 
@@ -19,6 +21,7 @@ export default function HalaqahDetailPage() {
   const halaqahId = Number(params.halaqahId);
 
   const [role, setRole] = useState<Role | "checking">("checking");
+  const [mosqueInfo, setMosqueInfo] = useState<MosqueInfo | null>(null);
   const [data, setData] = useState<{ halaqah: Halaqah; roster: Roster } | null | undefined>(undefined);
 
   useEffect(() => {
@@ -40,11 +43,17 @@ export default function HalaqahDetailPage() {
 
   useEffect(() => {
     if (role !== "super" && role !== "mosque") return;
+    fetch(`/api/mosques/${mosqueId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d: { mosque: { name: string }; features: Record<string, boolean> } | null) => {
+        if (d) setMosqueInfo({ name: d.mosque.name, features: d.features });
+      })
+      .catch(() => undefined);
     fetch(`/api/halaqahs/${halaqahId}/roster`)
       .then((res) => (res.ok ? res.json() : null))
       .then(setData)
       .catch(() => setData(null));
-  }, [role, halaqahId]);
+  }, [role, mosqueId, halaqahId]);
 
   async function logout() {
     await fetch(role === "mosque" ? "/api/mosque-admin/logout" : "/api/admin/logout", { method: "POST" });
@@ -84,11 +93,18 @@ export default function HalaqahDetailPage() {
 
   return (
     <DashboardShell
-      nav={[
-        ...(role === "super" ? [{ href: "/", label: "كل الجوامع", icon: <HomeIcon /> }] : []),
-        { href: `/mosque/${mosqueId}`, label: "الجامع", icon: <ShieldIcon /> },
-        { href: `/mosque/${mosqueId}/halaqah/${halaqahId}`, label: roster.halaqahName, icon: <BookIcon />, active: true },
-      ]}
+      nav={mosqueNavItems({
+        mosqueId,
+        mosqueName: mosqueInfo?.name ?? "الجامع",
+        features: mosqueInfo?.features ?? {},
+        isSuper: role === "super",
+        extra: {
+          href: `/mosque/${mosqueId}/halaqah/${halaqahId}`,
+          label: roster.halaqahName,
+          icon: <BookIcon />,
+          active: true,
+        },
+      })}
       title={roster.halaqahName}
       subtitle={roster.teacherName || "الطلاب المسجّلون بهذه الحلقة"}
       userLabel={role === "super" ? "المشرف العام" : "مدير الجامع"}

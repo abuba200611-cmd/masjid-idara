@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Badge, Button, Card, Empty, Stat } from "@/components/ui";
 import { DashboardShell } from "@/components/shell";
-import { BookIcon, HomeIcon, LinkIcon, ShieldIcon, TrendUpIcon, UsersIcon } from "@/components/icons";
+import { mosqueNavItems } from "@/components/mosque-nav";
+import { BookIcon, LinkIcon, ShieldIcon, TrendUpIcon, UsersIcon } from "@/components/icons";
 
 type Mosque = { id: number; name: string; city: string };
 type Halaqah = { id: number; halaqahName: string; teacherName: string; inviteCode: string };
@@ -17,6 +18,7 @@ type Pending = {
   halaqahId: number | null;
   createdAt: string;
 };
+type Features = Record<string, boolean>;
 
 type Role = "super" | "mosque" | null;
 
@@ -25,7 +27,9 @@ export default function MosqueDetailPage() {
   const mosqueId = Number(params.id);
 
   const [role, setRole] = useState<Role | "checking">("checking");
-  const [data, setData] = useState<{ mosque: Mosque; halaqahs: Halaqah[]; pending: Pending[] } | null>(null);
+  const [data, setData] = useState<
+    { mosque: Mosque; halaqahs: Halaqah[]; pending: Pending[]; features: Features } | null
+  >(null);
   const [inviteCode, setInviteCode] = useState("");
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -34,7 +38,9 @@ export default function MosqueDetailPage() {
   function load() {
     fetch(`/api/mosques/${mosqueId}`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((d: { mosque: Mosque; halaqahs: Halaqah[]; pending: Pending[] } | null) => setData(d))
+      .then((d: { mosque: Mosque; halaqahs: Halaqah[]; pending: Pending[]; features: Features } | null) =>
+        setData(d),
+      )
       .catch(() => setData(null));
   }
 
@@ -118,24 +124,24 @@ export default function MosqueDetailPage() {
 
   return (
     <DashboardShell
-      nav={
-        role === "super"
-          ? [
-              { href: "/", label: "كل الجوامع", icon: <HomeIcon /> },
-              { href: `/mosque/${mosqueId}`, label: data.mosque.name, icon: <ShieldIcon />, active: true },
-            ]
-          : [{ href: `/mosque/${mosqueId}`, label: data.mosque.name, icon: <ShieldIcon />, active: true }]
-      }
+      nav={mosqueNavItems({
+        mosqueId,
+        mosqueName: data.mosque.name,
+        features: data.features,
+        isSuper: role === "super",
+        activeHref: `/mosque/${mosqueId}`,
+      })}
       title={data.mosque.name}
       subtitle={data.mosque.city || "لوحة الجامع"}
       userLabel={role === "super" ? "المشرف العام" : "مدير الجامع"}
       onLogout={logout}
     >
       <div className="space-y-5">
-        <MosqueStatsSection mosqueId={mosqueId} />
+        {data.features.stats && <MosqueStatsSection mosqueId={mosqueId} />}
 
         {role === "super" && <MosqueAdminAccountCard mosqueId={mosqueId} />}
 
+        {data.features.registration && (
         <Card className="p-4">
           <div className="mb-2 flex items-center gap-2">
             <LinkIcon className="h-4 w-4 text-primary" />
@@ -156,7 +162,9 @@ export default function MosqueDetailPage() {
             </Button>
           </div>
         </Card>
+        )}
 
+        {data.features.halaqat && (
         <Card className="p-4">
           <h2 className="mb-3 text-sm font-semibold">إضافة حلقة</h2>
           <p className="mb-3 text-xs text-muted-foreground">
@@ -177,7 +185,9 @@ export default function MosqueDetailPage() {
           </form>
           {addError && <p className="mt-2 text-sm text-destructive">{addError}</p>}
         </Card>
+        )}
 
+        {data.features.halaqat && (
         <div>
           <h2 className="mb-3 font-naskh text-lg font-bold">الحلقات ({data.halaqahs.length})</h2>
           {data.halaqahs.length === 0 ? (
@@ -203,7 +213,9 @@ export default function MosqueDetailPage() {
             </ul>
           )}
         </div>
+        )}
 
+        {data.features.registration && (
         <div>
           <h2 className="mb-3 font-naskh text-lg font-bold">
             طلاب بانتظار التوزيع ({data.pending.filter((p) => p.status === "pending").length})
@@ -218,6 +230,7 @@ export default function MosqueDetailPage() {
             </ul>
           )}
         </div>
+        )}
       </div>
     </DashboardShell>
   );
