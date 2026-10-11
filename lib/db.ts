@@ -228,7 +228,7 @@ export async function setMosqueFeature(mosqueId: number, key: string, enabled: b
   `;
 }
 
-// ————— الدماغ: ملاحظات الجامع المترابطة —————
+// ————— الدماغ: ملاحظات قديمة تُقرأ فقط وتظهر كعُقَد بالخريطة (الكتابة عبر سكربت الاستيراد) —————
 
 export type BrainNote = {
   id: number;
@@ -260,55 +260,4 @@ export async function listBrainNotes(mosqueId: number): Promise<BrainNote[]> {
     FROM brain_notes WHERE mosque_id = ${mosqueId} ORDER BY updated_at DESC
   `;
   return rows.map(rowToBrainNote);
-}
-
-export async function getBrainNote(mosqueId: number, slug: string): Promise<BrainNote | null> {
-  const rows = await db().sql`
-    SELECT id, mosque_id, slug, title, body, tags, created_at, updated_at
-    FROM brain_notes WHERE mosque_id = ${mosqueId} AND slug = ${slug}
-  `;
-  const row = rows[0];
-  return row ? rowToBrainNote(row) : null;
-}
-
-/** تنشئ الملاحظة، أو null إن وُجدت أخرى بنفس السَلَغ بنفس الجامع (409 عند المستدعي) */
-export async function createBrainNote(
-  mosqueId: number,
-  note: { slug: string; title: string; body: string; tags: string[] },
-): Promise<BrainNote | null> {
-  if (await getBrainNote(mosqueId, note.slug)) return null;
-
-  const rows = await db().sql`
-    INSERT INTO brain_notes (mosque_id, slug, title, body, tags)
-    VALUES (${mosqueId}, ${note.slug}, ${note.title}, ${note.body}, ${note.tags})
-    RETURNING id, mosque_id, slug, title, body, tags, created_at, updated_at
-  `;
-  return rowToBrainNote(rows[0]);
-}
-
-/**
- * تحديث ملاحظة — السَلَغ يُعاد اشتقاقه من العنوان الجديد حتى تبقى وصلات
- * [[بالعنوان]] صحيحة. null إن كان السَلَغ الجديد محجوزاً لملاحظة أخرى.
- */
-export async function updateBrainNote(
-  mosqueId: number,
-  id: number,
-  changes: { slug: string; title: string; body: string; tags: string[] },
-): Promise<BrainNote | null> {
-  const conflict = await db().sql`
-    SELECT id FROM brain_notes WHERE mosque_id = ${mosqueId} AND slug = ${changes.slug} AND id <> ${id}
-  `;
-  if (conflict[0]) return null;
-
-  const rows = await db().sql`
-    UPDATE brain_notes
-    SET slug = ${changes.slug}, title = ${changes.title}, body = ${changes.body}, tags = ${changes.tags}, updated_at = now()
-    WHERE id = ${id} AND mosque_id = ${mosqueId}
-    RETURNING id, mosque_id, slug, title, body, tags, created_at, updated_at
-  `;
-  return rows[0] ? rowToBrainNote(rows[0]) : null;
-}
-
-export async function deleteBrainNote(mosqueId: number, id: number): Promise<void> {
-  await db().sql`DELETE FROM brain_notes WHERE mosque_id = ${mosqueId} AND id = ${id}`;
 }
