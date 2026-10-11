@@ -459,8 +459,8 @@ export async function listFamilyMembers(mosqueId: number, familyId: number): Pro
            COALESCE(ps.name, mm.name) AS name
     FROM family_members fm
     JOIN families f ON f.id = fm.family_id AND f.mosque_id = ${mosqueId}
-    LEFT JOIN pending_students ps ON fm.member_kind = 'student' AND ps.id = fm.member_id
-    LEFT JOIN mosque_members mm ON fm.member_kind = 'member' AND mm.id = fm.member_id
+    LEFT JOIN pending_students ps ON fm.member_kind = 'student' AND ps.id = fm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON fm.member_kind = 'member' AND mm.id = fm.member_id AND mm.mosque_id = ${mosqueId}
     WHERE fm.family_id = ${familyId} AND COALESCE(ps.name, mm.name) IS NOT NULL
     ORDER BY name
   `;
@@ -607,8 +607,8 @@ export async function listCommitteeMembers(
            COALESCE(ps.name, mm.name) AS name
     FROM committee_members cm
     JOIN committees c ON c.id = cm.committee_id AND c.mosque_id = ${mosqueId}
-    LEFT JOIN pending_students ps ON cm.member_kind = 'student' AND ps.id = cm.member_id
-    LEFT JOIN mosque_members mm ON cm.member_kind = 'member' AND mm.id = cm.member_id
+    LEFT JOIN pending_students ps ON cm.member_kind = 'student' AND ps.id = cm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON cm.member_kind = 'member' AND mm.id = cm.member_id AND mm.mosque_id = ${mosqueId}
     WHERE cm.committee_id = ${committeeId} AND COALESCE(ps.name, mm.name) IS NOT NULL
     ORDER BY name
   `;
@@ -916,12 +916,15 @@ export async function upsertEvaluations(
   targetKind: TargetKind,
   entries: EvaluationEntry[],
 ): Promise<void> {
-  await Promise.all(
-    entries.map((entry) => db().sql`
-      INSERT INTO evaluations (mosque_id, week_start, target_kind, target_id, criterion_id, score, note)
-      VALUES (${mosqueId}, ${weekStart}, ${targetKind}, ${entry.targetId}, ${entry.criterionId}, ${entry.score}, ${entry.note})
-      ON CONFLICT (week_start, target_kind, target_id, criterion_id)
-      DO UPDATE SET score = excluded.score, note = excluded.note, updated_at = now()
-    `),
-  );
+  // دفعات صغيرة حتى لا تُغرق مجمّع الاتصالات بمئات الاستعلامات المتوازية
+  for (let i = 0; i < entries.length; i += 20) {
+    await Promise.all(
+      entries.slice(i, i + 20).map((entry) => db().sql`
+        INSERT INTO evaluations (mosque_id, week_start, target_kind, target_id, criterion_id, score, note)
+        VALUES (${mosqueId}, ${weekStart}, ${targetKind}, ${entry.targetId}, ${entry.criterionId}, ${entry.score}, ${entry.note})
+        ON CONFLICT (week_start, target_kind, target_id, criterion_id)
+        DO UPDATE SET score = excluded.score, note = excluded.note, updated_at = now()
+      `),
+    );
+  }
 }
