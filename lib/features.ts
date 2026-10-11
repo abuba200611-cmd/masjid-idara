@@ -40,7 +40,7 @@ export const FEATURES: readonly Feature[] = [
   {
     key: "brain",
     nameAr: "الدماغ",
-    descriptionAr: "ملاحظات الجامع المترابطة: وصلات [[مزدوجة]]، وسوم، وخريطة معرفة.",
+    descriptionAr: "خريطة شبكية حية تُبنى تلقائياً من بيانات الجامع: حلقات ومعلّمون وطلاب وتسجيل.",
     defaultEnabled: true,
     status: "ready",
   },

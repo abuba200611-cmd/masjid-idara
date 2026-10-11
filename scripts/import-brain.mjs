@@ -35,9 +35,20 @@ if (files.length === 0) {
 }
 
 const parsed = [];
+const seen = new Map();
 for (const file of files) {
   const content = await readFile(join(folder, file), "utf8");
-  parsed.push({ file, ...parseNoteFile(file, content) });
+  const note = parseNoteFile(file, content);
+  if (!note.slug) {
+    console.warn(`تخطّي ${file}: العنوان لا يعطي رابطاً صالحاً`);
+    continue;
+  }
+  if (seen.has(note.slug)) {
+    console.warn(`تخطّي ${file}: نفس رابط ${seen.get(note.slug)} (${note.slug})`);
+    continue;
+  }
+  seen.set(note.slug, file);
+  parsed.push({ file, ...note });
 }
 
 // قراءة الحالة الحالية فقط (حتى مع --dry-run: نقرأ لنطبع ما سيتغيّر، ولا نكتب)
