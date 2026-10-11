@@ -435,7 +435,13 @@ export async function deleteFamily(mosqueId: number, id: number): Promise<boolea
   const rows = await db().sql`
     DELETE FROM families WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id
   `;
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  // درجات الأسرة المحذوفة لا معنى لها (الهدف بلا مفتاح أجنبي)
+  await db().sql`
+    DELETE FROM evaluations
+    WHERE mosque_id = ${mosqueId} AND target_kind = 'family' AND target_id = ${id}
+  `;
+  return true;
 }
 
 export type FamilyMember = {
@@ -476,7 +482,7 @@ export async function addFamilyMember(
 ): Promise<boolean> {
   const rows = await db().sql`
     INSERT INTO family_members (family_id, member_kind, member_id)
-    SELECT ${familyId}, ${kind}, ${memberId}
+    SELECT ${familyId}::int, ${kind}::text, ${memberId}::int
     WHERE EXISTS (SELECT 1 FROM families WHERE id = ${familyId} AND mosque_id = ${mosqueId})
     ON CONFLICT (family_id, member_kind, member_id) DO NOTHING
     RETURNING id
@@ -497,6 +503,26 @@ export async function removeFamilyMember(
     RETURNING id
   `;
   return rows.length > 0;
+}
+
+/** كل روابط أفراد الأسر بأسمائهم لجامع كامل — يغذّي رسم الدماغ بلا استعلام لكل أسرة */
+export async function listFamilyMemberLinks(
+  mosqueId: number,
+): Promise<{ familyId: number; memberKind: MemberKind; memberId: number; name: string }[]> {
+  const rows = await db().sql`
+    SELECT fm.family_id, fm.member_kind, fm.member_id, COALESCE(ps.name, mm.name) AS name
+    FROM family_members fm
+    JOIN families f ON f.id = fm.family_id AND f.mosque_id = ${mosqueId}
+    LEFT JOIN pending_students ps ON fm.member_kind = 'student' AND ps.id = fm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON fm.member_kind = 'member' AND mm.id = fm.member_id AND mm.mosque_id = ${mosqueId}
+    WHERE COALESCE(ps.name, mm.name) IS NOT NULL
+  `;
+  return rows.map((row) => ({
+    familyId: row.family_id as number,
+    memberKind: row.member_kind as MemberKind,
+    memberId: row.member_id as number,
+    name: row.name as string,
+  }));
 }
 
 // ————— اللجان —————
@@ -606,7 +632,7 @@ export async function addCommitteeMember(
 ): Promise<boolean> {
   const rows = await db().sql`
     INSERT INTO committee_members (committee_id, member_kind, member_id, role)
-    SELECT ${committeeId}, ${kind}, ${memberId}, ${role}
+    SELECT ${committeeId}::int, ${kind}::text, ${memberId}::int, ${role}::text
     WHERE EXISTS (SELECT 1 FROM committees WHERE id = ${committeeId} AND mosque_id = ${mosqueId})
     ON CONFLICT (committee_id, member_kind, member_id) DO NOTHING
     RETURNING id
@@ -627,6 +653,27 @@ export async function removeCommitteeMember(
     RETURNING id
   `;
   return rows.length > 0;
+}
+
+/** كل روابط أعضاء اللجان بأسمائهم لجامع كامل — يغذّي رسم الدماغ */
+export async function listCommitteeMemberLinks(
+  mosqueId: number,
+): Promise<{ committeeId: number; memberKind: MemberKind; memberId: number; name: string; role: string }[]> {
+  const rows = await db().sql`
+    SELECT cm.committee_id, cm.member_kind, cm.member_id, cm.role, COALESCE(ps.name, mm.name) AS name
+    FROM committee_members cm
+    JOIN committees c ON c.id = cm.committee_id AND c.mosque_id = ${mosqueId}
+    LEFT JOIN pending_students ps ON cm.member_kind = 'student' AND ps.id = cm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON cm.member_kind = 'member' AND mm.id = cm.member_id AND mm.mosque_id = ${mosqueId}
+    WHERE COALESCE(ps.name, mm.name) IS NOT NULL
+  `;
+  return rows.map((row) => ({
+    committeeId: row.committee_id as number,
+    memberKind: row.member_kind as MemberKind,
+    memberId: row.member_id as number,
+    name: row.name as string,
+    role: row.role as string,
+  }));
 }
 
 // ————— مهام اللجان (لوحة ثلاث أعمدة) —————
@@ -658,7 +705,7 @@ export async function listCommitteeTasks(
   committeeId: number,
 ): Promise<CommitteeTask[]> {
   const rows = await db().sql`
-    SELECT ct.id, ct.committee_id, ct.title, ct.status, ct.due_date, ct.created_at
+    SELECT ct.id, ct.committee_id, ct.title, ct.status, ct.due_date::text AS due_date, ct.created_at
     FROM committee_tasks ct
     WHERE ct.committee_id = ${committeeId}
       AND ct.committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
@@ -674,9 +721,9 @@ export async function createCommitteeTask(
 ): Promise<CommitteeTask | null> {
   const rows = await db().sql`
     INSERT INTO committee_tasks (committee_id, title, due_date)
-    SELECT ${committeeId}, ${task.title}, ${task.dueDate}
+    SELECT ${committeeId}::int, ${task.title}::text, ${task.dueDate}::date
     WHERE EXISTS (SELECT 1 FROM committees WHERE id = ${committeeId} AND mosque_id = ${mosqueId})
-    RETURNING id, committee_id, title, status, due_date, created_at
+    RETURNING id, committee_id, title, status, due_date::text AS due_date, created_at
   `;
   return rows[0] ? rowToTask(rows[0]) : null;
 }
@@ -692,7 +739,7 @@ export async function setCommitteeTaskStatus(
     UPDATE committee_tasks SET status = ${status}
     WHERE id = ${taskId} AND committee_id = ${committeeId}
       AND committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
-    RETURNING id, committee_id, title, status, due_date, created_at
+    RETURNING id, committee_id, title, status, due_date::text AS due_date, created_at
   `;
   return rows[0] ? rowToTask(rows[0]) : null;
 }
@@ -783,12 +830,12 @@ export async function seedSuggestedCriteria(mosqueId: number): Promise<Criterion
   return listCriteria(mosqueId);
 }
 
-/** تحديث معيار (اسم/درجة عظمى/تفعيل) — null إن لم يوجد بهذا الجامع */
+/** تحديث معيار (اسم/درجة عظمى/تفعيل) — null إن لم يوجد بهذا الجامع، و"conflict" إن تكرر الاسم */
 export async function updateCriterion(
   mosqueId: number,
   id: number,
   changes: { name?: string; maxScore?: number; active?: boolean },
-): Promise<Criterion | null> {
+): Promise<Criterion | "conflict" | null> {
   const existing = await db().sql`
     SELECT id, mosque_id, name, max_score, sort_order, active, created_at
     FROM evaluation_criteria WHERE mosque_id = ${mosqueId} AND id = ${id}
@@ -803,7 +850,7 @@ export async function updateCriterion(
     const conflict = await db().sql`
       SELECT id FROM evaluation_criteria WHERE mosque_id = ${mosqueId} AND name = ${name} AND id <> ${id}
     `;
-    if (conflict[0]) return null;
+    if (conflict[0]) return "conflict";
   }
 
   const rows = await db().sql`

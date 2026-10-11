@@ -57,6 +57,8 @@ export function text(value: unknown, maxLength: number): string {
 
 /** درجة صحيحة ضمن المجال، أو NaN */
 export function parseIntIn(value: unknown, min: number, max: number): number {
+  // Number("") و Number(null) = 0 — لا تُقبل كدرجة: نرفض كل ما ليس رقماً أو نصاً رقمياً غير فارغ
+  if (typeof value === "string" ? value.trim() === "" : typeof value !== "number") return NaN;
   const num = Number(value);
   return Number.isInteger(num) && num >= min && num <= max ? num : NaN;
 }
