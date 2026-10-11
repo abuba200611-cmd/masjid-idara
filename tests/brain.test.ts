@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLinks, parseNoteFile, renderMarkdown, slugify } from "../lib/brain";
-
-const hrefFor = (slug: string) => `/brain/${encodeURIComponent(slug)}`;
+import { parseLinks, parseNoteFile, slugify } from "../lib/brain";
 
 describe("slugify — عربي آمن", () => {
   it("يبقي الحروف العربية والفراغات شرَطات", () => {
@@ -32,43 +30,6 @@ describe("parseLinks — وصلات [[المزدوجة]]", () => {
 
   it.each(["نص عادي", "[وصلة واحدة]", "[]", "[[]]"])("لا وصلات في %s", (text) => {
     expect(parseLinks(text)).toEqual([]);
-  });
-});
-
-describe("renderMarkdown — آمن وبسيط", () => {
-  const existing = new Set(["موجودة"]);
-
-  it("يهرب <script> فلا يعمل أي HTML داخل النص", () => {
-    const html = renderMarkdown('<script>alert("x")</script> **عريض**', { existingSlugs: existing, hrefFor });
-    expect(html).not.toContain("<script>");
-    expect(html).toContain("&lt;script&gt;");
-    expect(html).toContain("<strong>عريض</strong>");
-  });
-
-  it("عناوين وقوائم وفقرات", () => {
-    const html = renderMarkdown("# العنوان\n\n- بند أول\n- بند ثانٍ\n\nفقرة", {
-      existingSlugs: existing,
-      hrefFor,
-    });
-    expect(html).toContain("<h2>العنوان</h2>");
-    expect(html).toContain("<ul><li>بند أول</li><li>بند ثانٍ</li></ul>");
-    expect(html).toContain("<p>فقرة</p>");
-  });
-
-  it("وصلة داخلية: موجودة عادية، ومفقودة حمراء — كلتاهما تفتح صفحة الملاحظة", () => {
-    const html = renderMarkdown("راجع [[موجودة]] و[[مفقودة]]", { existingSlugs: existing, hrefFor });
-    expect(html).toContain('<a class="brain-link" href="/brain/%D9%85%D9%88%D8%AC%D9%88%D8%AF%D8%A9">موجودة</a>');
-    expect(html).toContain('class="brain-link brain-link-missing"');
-    expect(html).toContain(">مفقودة</a>");
-  });
-
-  it("رابط خارجي http فقط — javascript: لا يصير رابطاً", () => {
-    const html = renderMarkdown("[موقع](https://example.com) و[خطر](javascript:alert(1))", {
-      existingSlugs: existing,
-      hrefFor,
-    });
-    expect(html).toContain('href="https://example.com"');
-    expect(html).not.toContain('href="javascript:');
   });
 });
 

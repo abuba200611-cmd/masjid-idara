@@ -46,59 +46,6 @@ body {
   font-feature-settings: "tnum";
 }
 
-/* الدماغ: ملاحظة ماركداون مُصيَّغة (renderMarkdown يهرّب HTML أولاً) */
-.brain-body {
-  line-height: 1.9;
-}
-.brain-body h2,
-.brain-body h3,
-.brain-body h4 {
-  font-family: var(--font-naskh);
-  font-weight: 700;
-  margin: 1.1rem 0 0.4rem;
-}
-.brain-body h2 {
-  font-size: 1.25rem;
-}
-.brain-body h3 {
-  font-size: 1.1rem;
-}
-.brain-body h4 {
-  font-size: 1rem;
-}
-.brain-body p {
-  margin: 0.5rem 0;
-}
-.brain-body ul,
-.brain-body ol {
-  margin: 0.5rem 0;
-  padding-inline-start: 1.5rem;
-}
-.brain-body ul {
-  list-style: disc;
-}
-.brain-body ol {
-  list-style: decimal;
-}
-.brain-body li {
-  margin: 0.2rem 0;
-}
-.brain-body code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em;
-  background: var(--color-muted);
-  border-radius: 0.375rem;
-  padding: 0.1rem 0.35rem;
-}
-.brain-body a {
-  color: var(--color-primary);
-  text-decoration: underline;
-}
-/* وصلة داخلية لهدف غير موجود بعد — حمراء، وبالضغط تفتح صفحة إنشائها */
-.brain-body a.brain-link-missing {
-  color: var(--color-destructive);
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
