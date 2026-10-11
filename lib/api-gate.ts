@@ -1,0 +1,62 @@
+import "server-only";
+
+import { unauthorized } from "./admin-auth";
+import { canAccessMosque } from "./access";
+import { getMosque, isFeatureEnabled, type MemberKind, type TaskStatus, type TargetKind } from "./db";
+import { getFeature } from "./features";
+
+/*
+  بوابة مشتركة لمسارات المزايا تحت /api/mosques/[id] — نفس ترتيب فحوص
+  مسارات الدماغ: 401 بلا صلاحية، ثم 404 للميزة المعطّلة، ثم 404 للجامع
+  غير الموجود. مع مدقّقات المدخلات الصغيرة التي تتكرر بين المسارات.
+*/
+
+export async function featureGate(mosqueId: number, featureKey: string): Promise<Response | null> {
+  if (!(await canAccessMosque(mosqueId))) return unauthorized();
+  const nameAr = getFeature(featureKey)?.nameAr ?? "هذه الميزة";
+  if (!(await isFeatureEnabled(mosqueId, featureKey))) {
+    return Response.json({ error: `${nameAr} غير مفعّل لهذا الجامع` }, { status: 404 });
+  }
+  if (!(await getMosque(mosqueId))) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
+  return null;
+}
+
+/** نسخة "إحدى المزايا" — مثل أعضاء الجامع الذين تخدمهم الأسر واللجان معاً */
+export async function featureGateAny(mosqueId: number, featureKeys: string[]): Promise<Response | null> {
+  if (!(await canAccessMosque(mosqueId))) return unauthorized();
+  for (const key of featureKeys) {
+    if (await isFeatureEnabled(mosqueId, key)) {
+      if (await getMosque(mosqueId)) return null;
+      return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
+    }
+  }
+  return Response.json({ error: "هذه الميزة غير مفعّلة لهذا الجامع" }, { status: 404 });
+}
+
+/** رقم موجب من معامل مسار، أو NaN */
+export function parseId(value: string): number {
+  return Number(value);
+}
+
+export function isMemberKind(value: unknown): value is MemberKind {
+  return value === "student" || value === "member";
+}
+
+export function isTargetKind(value: unknown): value is TargetKind {
+  return value === "family" || value === "student";
+}
+
+export function isTaskStatus(value: unknown): value is TaskStatus {
+  return value === "todo" || value === "doing" || value === "done";
+}
+
+/** نص مقلّم مقيّد الطول — للحقول القصيرة (أسماء، عناوين) والاختيارية الطويلة */
+export function text(value: unknown, maxLength: number): string {
+  return String(value ?? "").trim().slice(0, maxLength);
+}
+
+/** درجة صحيحة ضمن المجال، أو NaN */
+export function parseIntIn(value: unknown, min: number, max: number): number {
+  const num = Number(value);
+  return Number.isInteger(num) && num >= min && num <= max ? num : NaN;
+}
