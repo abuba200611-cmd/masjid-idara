@@ -164,10 +164,12 @@ export default function MosqueDetailPage() {
         </Card>
         )}
 
+        {data.features.halaqat && <TeacherJoinLinkCard mosqueId={mosqueId} />}
+
         {data.features.halaqat && (
-        <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">إضافة حلقة</h2>
-          <p className="mb-3 text-xs text-muted-foreground">
+        <details className="group rounded-2xl border border-border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-semibold">إضافة يدوية</summary>
+          <p className="mb-3 mt-3 text-xs text-muted-foreground">
             اطلب من المعلّم رابط دعوة حلقته من نظام المعلّم (صفحة الطلاب)، وألصق رمزه هنا فقط
             (آخر جزء من الرابط بعد <span className="tabular">invite=</span>).
           </p>
@@ -184,7 +186,7 @@ export default function MosqueDetailPage() {
             </Button>
           </form>
           {addError && <p className="mt-2 text-sm text-destructive">{addError}</p>}
-        </Card>
+        </details>
         )}
 
         {data.features.halaqat && (
@@ -233,6 +235,103 @@ export default function MosqueDetailPage() {
         )}
       </div>
     </DashboardShell>
+  );
+}
+
+/** رابط واحد يشاركه المدير مع المعلّمين: كل معلّم يفتحه من تطبيقه ويضغط "انضم" فتُضاف حلقته تلقائياً */
+function TeacherJoinLinkCard({ mosqueId }: { mosqueId: number }) {
+  const [link, setLink] = useState<string | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/mosques/${mosqueId}/teacher-join-link`)
+      .then(async (res) => {
+        const d = (await res.json().catch(() => ({}))) as { link?: string; error?: string };
+        if (res.ok && d.link) setLink(d.link);
+        else {
+          setLink(null);
+          setError(d.error ?? "تعذّر جلب الرابط");
+        }
+      })
+      .catch(() => {
+        setLink(null);
+        setError("تعذّر جلب الرابط");
+      });
+  }, [mosqueId]);
+
+  async function copy() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // الرابط ظاهر بالحقل ويمكن نسخه يدوياً
+    }
+  }
+
+  async function rotate() {
+    if (!window.confirm("تجديد الرابط يوقف الرابط الحالي فوراً، وكل من لم ينضم بعد يحتاج الرابط الجديد. متأكد؟")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/mosques/${mosqueId}/teacher-join-link`, { method: "POST" });
+      const d = (await res.json().catch(() => ({}))) as { link?: string; error?: string };
+      if (!res.ok || !d.link) {
+        setError(d.error ?? "تعذّر التجديد");
+        return;
+      }
+      setLink(d.link);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const whatsappHref = link
+    ? `https://wa.me/?text=${encodeURIComponent(`السلام عليكم، لإضافة حلقتك إلى الجامع افتح الرابط من تطبيق الحلقة واضغط "انضم":
+${link}`)}`
+    : undefined;
+
+  return (
+    <Card className="p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <LinkIcon className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">رابط انضمام المعلّمين</h2>
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        شارك هذا الرابط مع معلّمي الجامع — يفتحه كل معلّم (مشرف حلقته) ويضغط «انضم» فتُضاف حلقته هنا تلقائياً.
+      </p>
+      {link === undefined ? (
+        <p className="text-sm text-muted-foreground">جارٍ التحميل…</p>
+      ) : link ? (
+        <>
+          <input
+            readOnly
+            dir="ltr"
+            value={link}
+            onFocus={(e) => e.currentTarget.select()}
+            className="mb-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-muted-foreground"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={copy}>{copied ? "نُسخ ✓" : "نسخ"}</Button>
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-xl border border-border px-3 py-2 text-sm font-medium text-primary hover:bg-muted/50"
+            >
+              مشاركة واتساب
+            </a>
+            <Button variant="ghost" onClick={rotate} disabled={busy}>
+              {busy ? "لحظة…" : "تجديد الرابط"}
+            </Button>
+          </div>
+        </>
+      ) : null}
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+    </Card>
   );
 }
 

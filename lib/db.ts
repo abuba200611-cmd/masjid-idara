@@ -103,6 +103,50 @@ export async function createHalaqah(
   return Number(rows[0].id);
 }
 
+/** حلقة بهذا الرمز بأي جامع (لتفادي ربط حلقة واحدة بجامعين) — null لو غير موجودة */
+export async function findHalaqahByInviteCodeAnyMosque(
+  inviteCode: string,
+): Promise<{ id: number; mosqueId: number } | null> {
+  const rows = await db().sql`SELECT id, mosque_id FROM halaqahs WHERE invite_code = ${inviteCode} ORDER BY id LIMIT 1`;
+  const row = rows[0];
+  return row ? { id: Number(row.id), mosqueId: Number(row.mosque_id) } : null;
+}
+
+// ————— رابط انضمام المعلّمين (رمز واحد لكل جامع) —————
+
+function newJoinCode(): string {
+  return randomBytes(7).toString("base64url"); // ١٠ محارف آمنة للروابط
+}
+
+/** رمز انضمام المعلّمين — يُولَّد كسولاً عند أول طلب ويبقى ثابتاً حتى يُجدَّد */
+export async function getOrCreateTeacherJoinCode(mosqueId: number): Promise<string | null> {
+  const existing = await db().sql`SELECT teacher_join_code FROM mosques WHERE id = ${mosqueId}`;
+  if (!existing[0]) return null;
+  const current = existing[0].teacher_join_code as string | null | undefined;
+  if (current) return current;
+
+  await db().sql`
+    UPDATE mosques SET teacher_join_code = ${newJoinCode()} WHERE id = ${mosqueId} AND teacher_join_code IS NULL
+  `;
+  const after = await db().sql`SELECT teacher_join_code FROM mosques WHERE id = ${mosqueId}`;
+  return (after[0]?.teacher_join_code as string | null) ?? null;
+}
+
+/** يستبدل الرمز بجديد — القديم يتوقف عن العمل فوراً */
+export async function rotateTeacherJoinCode(mosqueId: number): Promise<string | null> {
+  const code = newJoinCode();
+  const rows = await db().sql`UPDATE mosques SET teacher_join_code = ${code} WHERE id = ${mosqueId} RETURNING id`;
+  return rows[0] ? code : null;
+}
+
+export async function findMosqueByTeacherJoinCode(code: string): Promise<Mosque | null> {
+  const rows = await db().sql`
+    SELECT id, name, city, created_at FROM mosques WHERE teacher_join_code = ${code}
+  `;
+  const row = rows[0];
+  return row ? { id: row.id, name: row.name, city: row.city, createdAt: row.created_at } : null;
+}
+
 // ————— الطلاب الجدد بانتظار التوزيع —————
 
 export type PendingStudent = {
