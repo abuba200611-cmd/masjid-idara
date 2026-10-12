@@ -1,10 +1,12 @@
+import { parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { unauthorized } from "@/lib/admin-auth";
 import { canAccessMosque } from "@/lib/access";
 import { getMosque, getMosqueFeatures, listHalaqahs, listPendingStudents } from "@/lib/db";
 import { effectiveFeatures } from "@/lib/features";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const id = Number((await params).id);
+  const id = parsePositiveIntParam((await params).id);
+  if (id === null) return paramNotFound();
   if (!(await canAccessMosque(id))) return unauthorized();
 
   const mosque = await getMosque(id);

@@ -1,4 +1,4 @@
-import { featureGate, text } from "@/lib/api-gate";
+import { featureGate, text, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { createCommitteeTask } from "@/lib/db";
 import { parseWeekStart } from "@/lib/evaluation";
 
@@ -8,6 +8,7 @@ type RouteContext = { params: Promise<{ id: string; committeeId: string }> };
 export async function POST(request: Request, { params }: RouteContext) {
   const { id, committeeId } = await params;
   const mosqueId = Number(id);
+  if ([id, committeeId].some((v) => parsePositiveIntParam(v) === null)) return paramNotFound();
   const gate = await featureGate(mosqueId, "committees");
   if (gate) return gate;
 

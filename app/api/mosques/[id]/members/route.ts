@@ -1,4 +1,4 @@
-import { featureGateAny, text } from "@/lib/api-gate";
+import { featureGateAny, text, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { createMosqueMember, listMosqueMembers, listPendingStudents, type MosqueMember } from "@/lib/db";
 
 /*
@@ -7,7 +7,8 @@ import { createMosqueMember, listMosqueMembers, listPendingStudents, type Mosque
 */
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGateAny(mosqueId, ["families", "committees"]);
   if (gate) return gate;
 
@@ -20,7 +21,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 /** عضو حر جديد (ولي أمر/متطوع) — الاسم فقط واجب */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGateAny(mosqueId, ["families", "committees"]);
   if (gate) return gate;
 

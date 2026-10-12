@@ -1,3 +1,4 @@
+import { parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { isAdmin, unauthorized } from "@/lib/admin-auth";
 import { getMosque, getMosqueAdminForMosque, upsertMosqueAdmin } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
@@ -5,7 +6,8 @@ import { hashPassword } from "@/lib/password";
 /** حساب مدير هذا الجامع الحالي، إن وُجد — يعرضه المشرف العام بصفحة الجامع */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await isAdmin())) return unauthorized();
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const admin = await getMosqueAdminForMosque(mosqueId);
   return Response.json({ admin });
 }
@@ -14,7 +16,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await isAdmin())) return unauthorized();
 
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   if (!(await getMosque(mosqueId))) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
 
   const body = (await request.json().catch(() => ({}))) as { username?: unknown; password?: unknown };

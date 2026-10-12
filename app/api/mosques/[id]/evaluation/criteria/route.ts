@@ -1,11 +1,12 @@
-import { featureGate, parseIntIn, text } from "@/lib/api-gate";
+import { featureGate, parseIntIn, text, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { createCriterion, listCriteria } from "@/lib/db";
 
 const FEATURE = "weekly_evaluation";
 
 /** معايير التقييم التي حدّدها الجامع (الفعّال وغير الفعّال) */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGate(mosqueId, FEATURE);
   if (gate) return gate;
 
@@ -14,7 +15,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 /** معيار جديد: الاسم واجب والدرجة العظمى 1..100 (الافتراضي 10) */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGate(mosqueId, FEATURE);
   if (gate) return gate;
 

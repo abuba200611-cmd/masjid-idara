@@ -38,6 +38,18 @@ export function parseId(value: string): number {
   return Number(value);
 }
 
+/** معامل مسار رقمي موجب آمن (أرقام فقط)، أو null */
+export function parsePositiveIntParam(value: string | undefined): number | null {
+  if (typeof value !== "string" || !/^[0-9]+$/.test(value)) return null;
+  const num = Number(value);
+  return Number.isSafeInteger(num) && num > 0 ? num : null;
+}
+
+/** 404 لمعامل مسار غير صالح */
+export function paramNotFound(): Response {
+  return Response.json({ error: "غير موجود" }, { status: 404 });
+}
+
 export function isMemberKind(value: unknown): value is MemberKind {
   return value === "student" || value === "member";
 }

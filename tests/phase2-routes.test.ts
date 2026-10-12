@@ -262,3 +262,23 @@ describe("التقييم الأسبوعي", () => {
     expect((await CRITERION_PATCH(json({ active: "no" }, "PATCH"), c)).status).toBe(400);
   });
 });
+
+describe("معاملات المسار غير الصالحة = 404 قبل أي وصول للقاعدة", () => {
+  const bad = ["abc", "0", "-1", "1.5", "1e3", "", "99999999999999999999"];
+  const cases: [string, (v: string) => Promise<Response>][] = [
+    ["mosque id", (v) => FAMILIES_GET(new Request("http://x"), { params: Promise.resolve({ id: v }) } as never)],
+    ["familyId", (v) => FAMILY_MEMBERS_POST(json({ memberKind: "member", memberId: 1 }), ctx({ familyId: v }))],
+    ["committeeId", (v) => TASKS_POST(json({ title: "ت" }), ctx({ committeeId: v }))],
+    ["taskId", (v) => TASK_PATCH(json({ status: "done" }, "PATCH"), ctx({ committeeId: "1", taskId: v }))],
+    ["criterionId", (v) => CRITERION_PATCH(json({ name: "س" }, "PATCH"), ctx({ criterionId: v }))],
+  ];
+  for (const [name, call] of cases) {
+    it.each(bad)(`${name}: "%s" = 404`, async (v) => {
+      expect((await call(v)).status).toBe(404);
+      expect(db.getFamily).not.toHaveBeenCalled();
+      expect(db.setCommitteeTaskStatus).not.toHaveBeenCalled();
+      expect(db.updateCriterion).not.toHaveBeenCalled();
+      expect(db.listFamilies).not.toHaveBeenCalled();
+    });
+  }
+});

@@ -1,4 +1,4 @@
-import { featureGate, isMemberKind } from "@/lib/api-gate";
+import { featureGate, isMemberKind, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { addFamilyMember, findMemberName, getFamily } from "@/lib/db";
 
 type RouteContext = { params: Promise<{ id: string; familyId: string }> };
@@ -7,6 +7,7 @@ type RouteContext = { params: Promise<{ id: string; familyId: string }> };
 export async function POST(request: Request, { params }: RouteContext) {
   const { id, familyId } = await params;
   const mosqueId = Number(id);
+  if ([id, familyId].some((v) => parsePositiveIntParam(v) === null)) return paramNotFound();
   const gate = await featureGate(mosqueId, "families");
   if (gate) return gate;
 

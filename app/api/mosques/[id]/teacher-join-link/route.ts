@@ -1,3 +1,4 @@
+import { parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { unauthorized } from "@/lib/admin-auth";
 import { canAccessMosque } from "@/lib/access";
 import { getMosque, getOrCreateTeacherJoinCode, isFeatureEnabled, rotateTeacherJoinCode } from "@/lib/db";
@@ -13,7 +14,8 @@ function buildLink(code: string): string | null {
 }
 
 async function guard(params: Promise<{ id: string }>): Promise<{ mosqueId: number } | Response> {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   if (!(await canAccessMosque(mosqueId))) return unauthorized();
   if (!(await getMosque(mosqueId))) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
   if (!(await isFeatureEnabled(mosqueId, "halaqat"))) {

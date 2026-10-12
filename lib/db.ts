@@ -357,7 +357,19 @@ export async function deleteMosqueMember(mosqueId: number, id: number): Promise<
   const rows = await db().sql`
     DELETE FROM mosque_members WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id
   `;
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  // لا أيتام: روابط العضو بالأسر واللجان (الدرجات لا تخص الأعضاء الأحرار: الهدف أسرة أو طالب)
+  await db().sql`
+    DELETE FROM family_members
+    WHERE member_kind = 'member' AND member_id = ${id}
+      AND family_id IN (SELECT id FROM families WHERE mosque_id = ${mosqueId})
+  `;
+  await db().sql`
+    DELETE FROM committee_members
+    WHERE member_kind = 'member' AND member_id = ${id}
+      AND committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
+  `;
+  return true;
 }
 
 /** اسم عضو من أفراد هذا الجامع (طالب أو حر)، أو null — تحقق قبل الإضافة لأسرة/لجنة */

@@ -1,4 +1,4 @@
-import { featureGate, isTargetKind, parseIntIn, text } from "@/lib/api-gate";
+import { featureGate, isTargetKind, parseIntIn, text, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { isSaturday, parseWeekStart } from "@/lib/evaluation";
 import { listCriteria, listEvaluationTargets, listWeekEvaluations, upsertEvaluations } from "@/lib/db";
 
@@ -12,7 +12,8 @@ const KIND_ERROR = "نوع الهدف يجب أن يكون family أو student";
   المعاملات: week=YYYY-MM-DD (يجب أن يكون سبتاً) و kind=family|student.
 */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGate(mosqueId, FEATURE);
   if (gate) return gate;
 
@@ -37,7 +38,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   المعيار من معاييره، والدرجة عدد صحيح 0..الدرجة العظمى لذلك المعيار.
 */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGate(mosqueId, FEATURE);
   if (gate) return gate;
 

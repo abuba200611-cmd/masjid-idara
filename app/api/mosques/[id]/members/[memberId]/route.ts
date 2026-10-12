@@ -1,4 +1,4 @@
-import { featureGateAny } from "@/lib/api-gate";
+import { featureGateAny, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { deleteMosqueMember } from "@/lib/db";
 
 type RouteContext = { params: Promise<{ id: string; memberId: string }> };
@@ -7,6 +7,7 @@ type RouteContext = { params: Promise<{ id: string; memberId: string }> };
 export async function DELETE(_request: Request, { params }: RouteContext) {
   const { id, memberId } = await params;
   const mosqueId = Number(id);
+  if ([id, memberId].some((v) => parsePositiveIntParam(v) === null)) return paramNotFound();
   const gate = await featureGateAny(mosqueId, ["families", "committees"]);
   if (gate) return gate;
 

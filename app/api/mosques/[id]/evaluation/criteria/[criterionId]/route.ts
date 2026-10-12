@@ -1,4 +1,4 @@
-import { featureGate, parseIntIn, text } from "@/lib/api-gate";
+import { featureGate, parseIntIn, text, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { deleteCriterion, updateCriterion } from "@/lib/db";
 
 type RouteContext = { params: Promise<{ id: string; criterionId: string }> };
@@ -7,6 +7,7 @@ type RouteContext = { params: Promise<{ id: string; criterionId: string }> };
 export async function PATCH(request: Request, { params }: RouteContext) {
   const { id, criterionId } = await params;
   const mosqueId = Number(id);
+  if ([id, criterionId].some((v) => parsePositiveIntParam(v) === null)) return paramNotFound();
   const gate = await featureGate(mosqueId, "weekly_evaluation");
   if (gate) return gate;
 
@@ -44,6 +45,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 export async function DELETE(_request: Request, { params }: RouteContext) {
   const { id, criterionId } = await params;
   const mosqueId = Number(id);
+  if ([id, criterionId].some((v) => parsePositiveIntParam(v) === null)) return paramNotFound();
   const gate = await featureGate(mosqueId, "weekly_evaluation");
   if (gate) return gate;
 

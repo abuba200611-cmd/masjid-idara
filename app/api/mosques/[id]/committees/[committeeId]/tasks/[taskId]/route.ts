@@ -1,4 +1,4 @@
-import { featureGate, isTaskStatus } from "@/lib/api-gate";
+import { featureGate, isTaskStatus, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { deleteCommitteeTask, setCommitteeTaskStatus } from "@/lib/db";
 
 type RouteContext = { params: Promise<{ id: string; committeeId: string; taskId: string }> };
@@ -7,6 +7,7 @@ type RouteContext = { params: Promise<{ id: string; committeeId: string; taskId:
 export async function PATCH(request: Request, { params }: RouteContext) {
   const { id, committeeId, taskId } = await params;
   const mosqueId = Number(id);
+  if ([id, committeeId, taskId].some((v) => parsePositiveIntParam(v) === null)) return paramNotFound();
   const gate = await featureGate(mosqueId, "committees");
   if (gate) return gate;
 
@@ -23,6 +24,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 export async function DELETE(_request: Request, { params }: RouteContext) {
   const { id, committeeId, taskId } = await params;
   const mosqueId = Number(id);
+  if ([id, committeeId, taskId].some((v) => parsePositiveIntParam(v) === null)) return paramNotFound();
   const gate = await featureGate(mosqueId, "committees");
   if (gate) return gate;
 

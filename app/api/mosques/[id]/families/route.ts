@@ -1,9 +1,10 @@
-import { featureGate, text } from "@/lib/api-gate";
+import { featureGate, text, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { createFamily, listFamilies } from "@/lib/db";
 
 /** أسر الجامع مع عدد أفراد كل أسرة */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGate(mosqueId, "families");
   if (gate) return gate;
 
@@ -12,7 +13,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 /** أسرة جديدة — الاسم واجب فقط */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   const gate = await featureGate(mosqueId, "families");
   if (gate) return gate;
 
