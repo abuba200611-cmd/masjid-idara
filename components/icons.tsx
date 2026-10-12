@@ -177,3 +177,13 @@ export function ChartIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function ImageIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <rect x="3.5" y="5" width="17" height="14" rx="2" />
+      <circle cx="9" cy="10" r="1.5" />
+      <path d="m4 17 5-4.5 3.5 3L15 13.5l5 4.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

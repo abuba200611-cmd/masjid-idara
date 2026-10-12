@@ -8,6 +8,7 @@ import type { Halaqah, PendingStudent } from "@/lib/db";
 
 vi.mock("@/lib/db", () => ({
   getMosque: vi.fn(),
+  listActivities: vi.fn(),
   getMosqueFeatures: vi.fn(),
   isFeatureEnabled: vi.fn(),
   listBadgeAwardLinks: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/lib/teacher-app", () => ({ fetchHalaqahRoster: vi.fn() }));
 import { buildGraphContext, buildMosqueGraph } from "@/lib/brain-graph";
 import {
   getMosque,
+  listActivities,
   getMosqueFeatures,
   isFeatureEnabled,
   listBadgeAwardLinks,
@@ -79,6 +81,7 @@ beforeEach(() => {
   vi.mocked(listFamilies).mockResolvedValue([]);
   vi.mocked(listFamilyMemberLinks).mockResolvedValue([]);
   vi.mocked(listCommittees).mockResolvedValue([]);
+  vi.mocked(listActivities).mockResolvedValue([]);
   vi.mocked(listCommitteeMemberLinks).mockResolvedValue([]);
   vi.mocked(listBadges).mockResolvedValue([]);
   vi.mocked(listBadgeAwardLinks).mockResolvedValue([]);

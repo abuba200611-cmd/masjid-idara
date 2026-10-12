@@ -3,7 +3,7 @@
   مُنشئ الرسم على الخادم وشاشة العرض على العميل.
 */
 
-export const NODE_TYPES = ["mosque", "halaqah", "teacher", "student", "pending", "feature", "note", "family", "committee", "member", "badge"] as const;
+export const NODE_TYPES = ["mosque", "halaqah", "teacher", "student", "pending", "feature", "note", "family", "committee", "member", "badge", "activity"] as const;
 export type NodeType = (typeof NODE_TYPES)[number];
 
 export type NodeMeta = Record<string, string | number | boolean>;
@@ -23,4 +23,5 @@ export const NODE_TYPE_INFO: Record<NodeType, { label: string; color: string }> 
   committee: { label: "لجنة", color: "#2dd4bf" },
   member: { label: "عضو", color: "#d2a8ff" },
   badge: { label: "وسام", color: "#eab308" },
+  activity: { label: "نشاط", color: "#f0883e" },
 };

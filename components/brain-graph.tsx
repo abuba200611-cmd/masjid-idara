@@ -16,7 +16,7 @@ type View = { selected: number; hidden: ReadonlySet<NodeType>; query: string };
 type Engine = { redraw: () => void; focus: (index: number) => void; destroy: () => void };
 
 const BG = "#1e1e1e";
-const BASE_RADIUS: Record<NodeType, number> = { mosque: 10, halaqah: 6, teacher: 5, student: 2.5, pending: 3, feature: 5, note: 4, family: 6, committee: 6, member: 3, badge: 4 };
+const BASE_RADIUS: Record<NodeType, number> = { mosque: 10, halaqah: 6, teacher: 5, student: 2.5, pending: 3, feature: 5, note: 4, family: 6, committee: 6, member: 3, badge: 4, activity: 4 };
 const FONT = "system-ui, 'Segoe UI', Tahoma, sans-serif";
 
 function prepare(graph: MosqueGraph): Prepared {

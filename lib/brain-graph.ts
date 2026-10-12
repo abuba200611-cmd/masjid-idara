@@ -6,6 +6,7 @@ import {
   isFeatureEnabled,
   listBadgeAwardLinks,
   listBadges,
+  listActivities,
   listBrainNotes,
   listCommitteeMemberLinks,
   listCommittees,
@@ -34,6 +35,7 @@ export const PENDING_HUB_ID = "pending-hub";
 export const familyNodeId = (familyId: number) => `family:${familyId}`;
 export const committeeNodeId = (committeeId: number) => `committee:${committeeId}`;
 export const badgeNodeId = (badgeId: number) => `badge:${badgeId}`;
+export const activityNodeId = (activityId: number) => `activity:${activityId}`;
 
 /** عقدة الفرد: الطالب هو نفسه عقدة طلب التسجيل `pending:{id}`، والعضو الحر عقدة مستقلة */
 const memberNodeId = (kind: MemberKind, memberId: number) => (kind === "student" ? `pending:${memberId}` : `member:${memberId}`);
@@ -229,6 +231,28 @@ const badgesSource: GraphSource = async (mosqueId) => {
   };
 };
 
+/** الأنشطة: جامع ← نشاط، ونشاط ← حلقته/أسرته/لجنته إن وُسم — فقط إن كانت ميزة الأرشيف مفعّلة */
+const activitiesSource: GraphSource = async (mosqueId) => {
+  if (!(await isFeatureEnabled(mosqueId, "archive"))) return { nodes: [], edges: [] };
+  const activities = await listActivities(mosqueId);
+  const tagTarget = (kind: string, id: number) =>
+    kind === "halaqah" ? halaqahNodeId(id) : kind === "family" ? familyNodeId(id) : committeeNodeId(id);
+  return {
+    nodes: activities.map((activity) => ({
+      id: activityNodeId(activity.id),
+      type: "activity" as const,
+      label: activity.title,
+      meta: { date: activity.activityDate, photos: activity.photoCount, videos: activity.videoCount },
+    })),
+    edges: activities.flatMap((activity) => [
+      { source: mosqueNodeId(mosqueId), target: activityNodeId(activity.id), kind: "activity" },
+      ...(activity.tagKind !== null && activity.tagId !== null
+        ? [{ source: tagTarget(activity.tagKind, activity.tagId), target: activityNodeId(activity.id), kind: "activity-tag" }]
+        : []),
+    ]),
+  };
+};
+
 export const GRAPH_SOURCES: readonly GraphSource[] = [
   mosqueSource,
   halaqatSource,
@@ -238,6 +262,7 @@ export const GRAPH_SOURCES: readonly GraphSource[] = [
   familiesSource,
   committeesSource,
   badgesSource,
+  activitiesSource,
 ];
 
 /** الرسم الكامل للجامع — تُحذف الحوافّ التي لأحد طرفيها عقدة غير موجودة، والمعرّفات المكررة */
@@ -272,6 +297,7 @@ export function buildGraphContext(graph: MosqueGraph): string {
   if (byType("family").length > 0) lines.push(`الأسر: ${byType("family").length}`);
   if (byType("committee").length > 0) lines.push(`اللجان: ${byType("committee").length}`);
   if (byType("badge").length > 0) lines.push(`الأوسمة: ${byType("badge").length}`);
+  if (byType("activity").length > 0) lines.push(`الأنشطة: ${byType("activity").length}`);
 
   if (halaqahs.length > 0) {
     lines.push("", "الحلقات:");

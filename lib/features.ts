@@ -66,6 +66,13 @@ export const FEATURES: readonly Feature[] = [
     status: "ready",
   },
   {
+    key: "archive",
+    nameAr: "أرشيف الأنشطة",
+    descriptionAr: "صور وروابط فيديو لأنشطة الجامع، مرتبة بالتاريخ وموسومة بالحلقة أو الأسرة أو اللجنة.",
+    defaultEnabled: false,
+    status: "ready",
+  },
+  {
     key: "badges",
     nameAr: "الأوسمة",
     descriptionAr: "أوسمة إنجاز وتحفيز تمنحها للطلاب والأسر والأعضاء، وتظهر بخرائط الدماغ.",
