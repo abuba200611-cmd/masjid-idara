@@ -4,6 +4,8 @@ import {
   getMosque,
   getMosqueFeatures,
   isFeatureEnabled,
+  listBadgeAwardLinks,
+  listBadges,
   listBrainNotes,
   listCommitteeMemberLinks,
   listCommittees,
@@ -11,6 +13,7 @@ import {
   listFamilyMemberLinks,
   listHalaqahs,
   listPendingStudents,
+  type BadgeTargetKind,
   type MemberKind,
 } from "./db";
 import { parseLinks } from "./brain";
@@ -30,9 +33,14 @@ export const halaqahNodeId = (halaqahId: number) => `halaqah:${halaqahId}`;
 export const PENDING_HUB_ID = "pending-hub";
 export const familyNodeId = (familyId: number) => `family:${familyId}`;
 export const committeeNodeId = (committeeId: number) => `committee:${committeeId}`;
+export const badgeNodeId = (badgeId: number) => `badge:${badgeId}`;
 
 /** عقدة الفرد: الطالب هو نفسه عقدة طلب التسجيل `pending:{id}`، والعضو الحر عقدة مستقلة */
 const memberNodeId = (kind: MemberKind, memberId: number) => (kind === "student" ? `pending:${memberId}` : `member:${memberId}`);
+
+/** عقدة هدف الوسام — نفس عُقد الأفراد والأسر في مصادرها الأخرى */
+const badgeTargetNodeId = (kind: BadgeTargetKind, targetId: number) =>
+  kind === "family" ? familyNodeId(targetId) : memberNodeId(kind === "student" ? "student" : "member", targetId);
 
 /** عُقَد الأعضاء الأحرار — قد تتكرر بين أسرة ولجنة، والتكرار يُحذف بـ buildMosqueGraph */
 function freeMemberNodes(links: { memberKind: MemberKind; memberId: number; name: string }[]): GraphNode[] {
@@ -202,6 +210,25 @@ const committeesSource: GraphSource = async (mosqueId) => {
   };
 };
 
+/** الأوسمة: وسام ← كل هدف مُنح له — فقط إن كانت الميزة مفعّلة */
+const badgesSource: GraphSource = async (mosqueId) => {
+  if (!(await isFeatureEnabled(mosqueId, "badges"))) return { nodes: [], edges: [] };
+  const [badges, awards] = await Promise.all([listBadges(mosqueId), listBadgeAwardLinks(mosqueId)]);
+  return {
+    nodes: badges.map((badge) => ({
+      id: badgeNodeId(badge.id),
+      type: "badge" as const,
+      label: `${badge.icon} ${badge.name}`,
+      meta: { awarded: badge.awardCount },
+    })),
+    edges: awards.map((award) => ({
+      source: badgeNodeId(award.badgeId),
+      target: badgeTargetNodeId(award.targetKind, award.targetId),
+      kind: "badge",
+    })),
+  };
+};
+
 export const GRAPH_SOURCES: readonly GraphSource[] = [
   mosqueSource,
   halaqatSource,
@@ -210,6 +237,7 @@ export const GRAPH_SOURCES: readonly GraphSource[] = [
   notesSource,
   familiesSource,
   committeesSource,
+  badgesSource,
 ];
 
 /** الرسم الكامل للجامع — تُحذف الحوافّ التي لأحد طرفيها عقدة غير موجودة، والمعرّفات المكررة */
@@ -243,8 +271,7 @@ export function buildGraphContext(graph: MosqueGraph): string {
   if (byType("note").length > 0) lines.push(`ملاحظات: ${byType("note").length}`);
   if (byType("family").length > 0) lines.push(`الأسر: ${byType("family").length}`);
   if (byType("committee").length > 0) lines.push(`اللجان: ${byType("committee").length}`);
-  if (byType("family").length > 0) lines.push(`الأسر: ${byType("family").length}`);
-  if (byType("committee").length > 0) lines.push(`اللجان: ${byType("committee").length}`);
+  if (byType("badge").length > 0) lines.push(`الأوسمة: ${byType("badge").length}`);
 
   if (halaqahs.length > 0) {
     lines.push("", "الحلقات:");

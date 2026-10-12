@@ -19,7 +19,8 @@ import { getMosque, getMosqueFeatures, setMosqueFeature, type MosqueFeature } fr
 
 const featuresList: MosqueFeature[] = [
   { key: "stats", nameAr: "الإحصائيات", descriptionAr: "", defaultEnabled: true, status: "ready", enabled: true },
-  { key: "badges", nameAr: "الأوسمة", descriptionAr: "", defaultEnabled: false, status: "soon", enabled: false },
+  { key: "badges", nameAr: "الأوسمة", descriptionAr: "", defaultEnabled: false, status: "ready", enabled: false },
+  { key: "agent", nameAr: "المساعد الذكي", descriptionAr: "", defaultEnabled: false, status: "soon", enabled: false },
 ];
 
 function ctx(id = "1") {
@@ -77,7 +78,7 @@ describe("PATCH /api/mosques/[id]/features", () => {
   });
 
   it("ميزة قريباً = 400 ولا يمكن تفعيلها", async () => {
-    const res = await PATCH(patchRequest({ key: "badges", enabled: true }), ctx());
+    const res = await PATCH(patchRequest({ key: "agent", enabled: true }), ctx());
     expect(res.status).toBe(400);
     expect(setMosqueFeature).not.toHaveBeenCalled();
   });

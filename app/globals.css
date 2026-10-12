@@ -54,3 +54,10 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* الطباعة (التقارير): خلفية بيضاء وإخفاء عناصر التحكم — الطباعة تُظهر الجداول فقط */
+@media print {
+  body {
+    background: #fff;
+  }
+}

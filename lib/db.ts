@@ -940,3 +940,491 @@ export async function upsertEvaluations(
     );
   }
 }
+
+// ————— الأوسمة: تعريفات الجامع ثم منحها للأهداف —————
+
+/** هدف الوسام: طالب (pending_students) أو أسرة أو عضو حر — أوسع من هدف التقييم */
+export type BadgeTargetKind = "student" | "family" | "member";
+
+export type Badge = {
+  id: number;
+  mosqueId: number;
+  name: string;
+  icon: string;
+  description: string;
+  criteriaNote: string;
+  createdAt: string;
+  awardCount: number;
+};
+
+function rowToBadge(row: Record<string, unknown>): Badge {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    name: row.name as string,
+    icon: row.icon as string,
+    description: row.description as string,
+    criteriaNote: row.criteria_note as string,
+    createdAt: row.created_at as string,
+    awardCount: (row.award_count as number) ?? 0,
+  };
+}
+
+export async function listBadges(mosqueId: number): Promise<Badge[]> {
+  const rows = await db().sql`
+    SELECT b.id, b.mosque_id, b.name, b.icon, b.description, b.criteria_note, b.created_at,
+           (SELECT count(*)::int FROM badge_awards ba WHERE ba.badge_id = b.id) AS award_count
+    FROM badges b
+    WHERE b.mosque_id = ${mosqueId}
+    ORDER BY b.created_at, b.id
+  `;
+  return rows.map(rowToBadge);
+}
+
+export async function getBadge(mosqueId: number, id: number): Promise<Badge | null> {
+  const rows = await db().sql`
+    SELECT b.id, b.mosque_id, b.name, b.icon, b.description, b.criteria_note, b.created_at,
+           (SELECT count(*)::int FROM badge_awards ba WHERE ba.badge_id = b.id) AS award_count
+    FROM badges b
+    WHERE b.mosque_id = ${mosqueId} AND b.id = ${id}
+  `;
+  return rows[0] ? rowToBadge(rows[0]) : null;
+}
+
+/** إنشاء وسام — null إن وُجد آخر بنفس الاسم (409 عند المستدعي) */
+export async function createBadge(
+  mosqueId: number,
+  badge: { name: string; icon: string; description: string; criteriaNote: string },
+): Promise<Badge | null> {
+  const conflict = await db().sql`SELECT id FROM badges WHERE mosque_id = ${mosqueId} AND name = ${badge.name}`;
+  if (conflict[0]) return null;
+
+  const rows = await db().sql`
+    INSERT INTO badges (mosque_id, name, icon, description, criteria_note)
+    VALUES (${mosqueId}, ${badge.name}, ${badge.icon}, ${badge.description}, ${badge.criteriaNote})
+    RETURNING id, mosque_id, name, icon, description, criteria_note, created_at, 0 AS award_count
+  `;
+  return rowToBadge(rows[0]);
+}
+
+/** المقترح الافتراضي — يضيف الناقص فقط (تعارض الاسم يتجاهل) */
+export const SUGGESTED_BADGES: readonly { name: string; icon: string; description: string; criteriaNote: string }[] = [
+  { name: "المتميز", icon: "🏅", description: "أعلى درجة بالتقييم الأسبوعي.", criteriaNote: "الأول بترتيب الأسبوع." },
+  { name: "الحافظ المتقن", icon: "📖", description: "إتقان الحفظ والمراجعة.", criteriaNote: "إتقان 75٪ فأكثر." },
+  { name: "الملتزم بالحضور", icon: "⏰", description: "حضور منتظم بلا غياب.", criteriaNote: "حضور كامل للأسبوع." },
+  { name: "المبادر", icon: "🤝", description: "مبادرة ومشاركة بأعمال الجامع.", criteriaNote: "مشاركة فعلية بالأنشطة." },
+  { name: "نجم الأسبوع", icon: "⭐", description: "الطالب المثالي لهذا الأسبوع.", criteriaNote: "يختاره المعلّم كل أسبوع." },
+];
+
+export async function seedSuggestedBadges(mosqueId: number): Promise<Badge[]> {
+  for (const badge of SUGGESTED_BADGES) {
+    await db().sql`
+      INSERT INTO badges (mosque_id, name, icon, description, criteria_note)
+      VALUES (${mosqueId}, ${badge.name}, ${badge.icon}, ${badge.description}, ${badge.criteriaNote})
+      ON CONFLICT (mosque_id, name) DO NOTHING
+    `;
+  }
+  return listBadges(mosqueId);
+}
+
+/** حذف الوسام يحذف منحه معه (تسلسل بالقاعدة) */
+export async function deleteBadge(mosqueId: number, id: number): Promise<boolean> {
+  const rows = await db().sql`DELETE FROM badges WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id`;
+  return rows.length > 0;
+}
+
+/** اسم هدف وسام من أفراد هذا الجامع، أو null — تحقق قبل المنح */
+export async function findBadgeTargetName(
+  mosqueId: number,
+  kind: BadgeTargetKind,
+  targetId: number,
+): Promise<string | null> {
+  if (kind === "family") {
+    const rows = await db().sql`SELECT name FROM families WHERE mosque_id = ${mosqueId} AND id = ${targetId}`;
+    return rows[0] ? (rows[0].name as string) : null;
+  }
+  return findMemberName(mosqueId, kind, targetId);
+}
+
+export type BadgeAward = {
+  id: number;
+  badgeId: number;
+  badgeName: string;
+  icon: string;
+  targetKind: BadgeTargetKind;
+  targetId: number;
+  targetName: string;
+  awardedAt: string;
+  note: string;
+};
+
+function rowToAward(row: Record<string, unknown>): BadgeAward {
+  return {
+    id: row.id as number,
+    badgeId: row.badge_id as number,
+    badgeName: row.badge_name as string,
+    icon: row.icon as string,
+    targetKind: row.target_kind as BadgeTargetKind,
+    targetId: row.target_id as number,
+    targetName: row.target_name as string,
+    awardedAt: row.awarded_at as string,
+    note: row.note as string,
+  };
+}
+
+/** اسم الهدف عبر JOIN متعدد الأشكال — الأهداف المحذوفة تُستبعد (لا أيتام) */
+export async function listRecentAwards(mosqueId: number, limit = 20): Promise<BadgeAward[]> {
+  const rows = await db().sql`
+    SELECT ba.id, ba.badge_id, b.name AS badge_name, b.icon, ba.target_kind, ba.target_id,
+           COALESCE(ps.name, f.name, mm.name) AS target_name,
+           ba.awarded_at::text AS awarded_at, ba.note
+    FROM badge_awards ba
+    JOIN badges b ON b.id = ba.badge_id
+    LEFT JOIN pending_students ps ON ba.target_kind = 'student' AND ps.id = ba.target_id AND ps.mosque_id = ba.mosque_id
+    LEFT JOIN families f ON ba.target_kind = 'family' AND f.id = ba.target_id AND f.mosque_id = ba.mosque_id
+    LEFT JOIN mosque_members mm ON ba.target_kind = 'member' AND mm.id = ba.target_id AND mm.mosque_id = ba.mosque_id
+    WHERE ba.mosque_id = ${mosqueId} AND COALESCE(ps.name, f.name, mm.name) IS NOT NULL
+    ORDER BY ba.awarded_at DESC, ba.id DESC
+    LIMIT ${limit}
+  `;
+  return rows.map(rowToAward);
+}
+
+/** كل منح وسام واحد (بترتيب أحدثها) */
+export async function listBadgeAwards(mosqueId: number, badgeId: number): Promise<BadgeAward[]> {
+  const rows = await db().sql`
+    SELECT ba.id, ba.badge_id, b.name AS badge_name, b.icon, ba.target_kind, ba.target_id,
+           COALESCE(ps.name, f.name, mm.name) AS target_name,
+           ba.awarded_at::text AS awarded_at, ba.note
+    FROM badge_awards ba
+    JOIN badges b ON b.id = ba.badge_id
+    LEFT JOIN pending_students ps ON ba.target_kind = 'student' AND ps.id = ba.target_id AND ps.mosque_id = ba.mosque_id
+    LEFT JOIN families f ON ba.target_kind = 'family' AND f.id = ba.target_id AND f.mosque_id = ba.mosque_id
+    LEFT JOIN mosque_members mm ON ba.target_kind = 'member' AND mm.id = ba.target_id AND mm.mosque_id = ba.mosque_id
+    WHERE ba.mosque_id = ${mosqueId} AND ba.badge_id = ${badgeId}
+      AND COALESCE(ps.name, f.name, mm.name) IS NOT NULL
+    ORDER BY ba.awarded_at DESC, ba.id DESC
+  `;
+  return rows.map(rowToAward);
+}
+
+/** أوسمة هدف واحد — لعرضها بصفحة الأوسمة */
+export async function listTargetAwards(
+  mosqueId: number,
+  kind: BadgeTargetKind,
+  targetId: number,
+): Promise<BadgeAward[]> {
+  const rows = await db().sql`
+    SELECT ba.id, ba.badge_id, b.name AS badge_name, b.icon, ba.target_kind, ba.target_id,
+           COALESCE(ps.name, f.name, mm.name) AS target_name,
+           ba.awarded_at::text AS awarded_at, ba.note
+    FROM badge_awards ba
+    JOIN badges b ON b.id = ba.badge_id
+    LEFT JOIN pending_students ps ON ba.target_kind = 'student' AND ps.id = ba.target_id AND ps.mosque_id = ba.mosque_id
+    LEFT JOIN families f ON ba.target_kind = 'family' AND f.id = ba.target_id AND f.mosque_id = ba.mosque_id
+    LEFT JOIN mosque_members mm ON ba.target_kind = 'member' AND mm.id = ba.target_id AND mm.mosque_id = ba.mosque_id
+    WHERE ba.mosque_id = ${mosqueId} AND ba.target_kind = ${kind} AND ba.target_id = ${targetId}
+      AND COALESCE(ps.name, f.name, mm.name) IS NOT NULL
+    ORDER BY ba.awarded_at DESC, ba.id DESC
+  `;
+  return rows.map(rowToAward);
+}
+
+/**
+ * منح وسام — الوسام والهدف من هذا الجامع (تحقق قبله بالمسار)، والفريد
+ * (وسام، هدف، يوم) يمنع التكرار: "duplicate" عند المحاولة الثانية بنفس اليوم.
+ */
+export async function awardBadge(
+  mosqueId: number,
+  badgeId: number,
+  kind: BadgeTargetKind,
+  targetId: number,
+  awardedAt: string,
+  note: string,
+): Promise<BadgeAward | "duplicate" | null> {
+  const rows = await db().sql`
+    INSERT INTO badge_awards (badge_id, mosque_id, target_kind, target_id, awarded_at, note)
+    SELECT ${badgeId}::int, ${mosqueId}::int, ${kind}::text, ${targetId}::int, ${awardedAt}::date, ${note}::text
+    WHERE EXISTS (SELECT 1 FROM badges WHERE id = ${badgeId} AND mosque_id = ${mosqueId})
+    ON CONFLICT (badge_id, target_kind, target_id, awarded_at) DO NOTHING
+    RETURNING id, badge_id, awarded_at::text AS awarded_at, note, target_kind, target_id
+  `;
+  if (!rows[0]) {
+    return (await getBadge(mosqueId, badgeId)) ? "duplicate" : null;
+  }
+
+  const badge = await getBadge(mosqueId, badgeId);
+  const targetName = await findBadgeTargetName(mosqueId, kind, targetId);
+  return {
+    id: rows[0].id as number,
+    badgeId,
+    badgeName: badge?.name ?? "",
+    icon: badge?.icon ?? "",
+    targetKind: kind,
+    targetId,
+    targetName: targetName ?? "",
+    awardedAt: rows[0].awarded_at as string,
+    note: rows[0].note as string,
+  };
+}
+
+/** كل روابط المنح بأسمائها لجامع كامل — يغذّي رسم الدماغ */
+export async function listBadgeAwardLinks(
+  mosqueId: number,
+): Promise<{ badgeId: number; badgeName: string; icon: string; targetKind: BadgeTargetKind; targetId: number; targetName: string }[]> {
+  const rows = await db().sql`
+    SELECT ba.badge_id, b.name AS badge_name, b.icon, ba.target_kind, ba.target_id,
+           COALESCE(ps.name, f.name, mm.name) AS target_name
+    FROM badge_awards ba
+    JOIN badges b ON b.id = ba.badge_id AND b.mosque_id = ${mosqueId}
+    LEFT JOIN pending_students ps ON ba.target_kind = 'student' AND ps.id = ba.target_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN families f ON ba.target_kind = 'family' AND f.id = ba.target_id AND f.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON ba.target_kind = 'member' AND mm.id = ba.target_id AND mm.mosque_id = ${mosqueId}
+    WHERE ba.mosque_id = ${mosqueId} AND COALESCE(ps.name, f.name, mm.name) IS NOT NULL
+    ORDER BY b.created_at, b.id, ba.awarded_at DESC
+  `;
+  return rows.map((row) => ({
+    badgeId: row.badge_id as number,
+    badgeName: row.badge_name as string,
+    icon: row.icon as string,
+    targetKind: row.target_kind as BadgeTargetKind,
+    targetId: row.target_id as number,
+    targetName: row.target_name as string,
+  }));
+}
+
+// ————— الجدول الأسبوعي: فترة × خانة —————
+
+export type SchedulePeriod = "fajr" | "dhuhr" | "asr" | "maghrib" | "isha" | "other";
+export type ProgramKind = "halaqah" | "family" | "committee" | "lecture" | "sport" | "cultural" | "other";
+
+export type ScheduleSlot = {
+  id: number;
+  mosqueId: number;
+  dayOfWeek: number;
+  period: SchedulePeriod;
+  startTime: string | null;
+  title: string;
+  programKind: ProgramKind;
+  refId: number | null;
+  location: string | null;
+  notes: string | null;
+  createdAt: string;
+};
+
+function rowToSlot(row: Record<string, unknown>): ScheduleSlot {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    dayOfWeek: row.day_of_week as number,
+    period: row.period as SchedulePeriod,
+    startTime: (row.start_time as string | null) ?? null,
+    title: row.title as string,
+    programKind: row.program_kind as ProgramKind,
+    refId: (row.ref_id as number | null) ?? null,
+    location: (row.location as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export async function listScheduleSlots(mosqueId: number): Promise<ScheduleSlot[]> {
+  const rows = await db().sql`
+    SELECT id, mosque_id, day_of_week, period, start_time, title, program_kind, ref_id, location, notes, created_at
+    FROM schedule_slots
+    WHERE mosque_id = ${mosqueId}
+    ORDER BY day_of_week, start_time NULLS FIRST, title
+  `;
+  return rows.map(rowToSlot);
+}
+
+/** إضافة خانة — ref_id تحقق المسار أنها من الجامع نفسه (أو null) */
+export async function createScheduleSlot(
+  mosqueId: number,
+  slot: {
+    dayOfWeek: number;
+    period: SchedulePeriod;
+    startTime: string | null;
+    title: string;
+    programKind: ProgramKind;
+    refId: number | null;
+    location: string | null;
+    notes: string | null;
+  },
+): Promise<ScheduleSlot> {
+  const rows = await db().sql`
+    INSERT INTO schedule_slots (mosque_id, day_of_week, period, start_time, title, program_kind, ref_id, location, notes)
+    VALUES (${mosqueId}, ${slot.dayOfWeek}, ${slot.period}, ${slot.startTime}, ${slot.title}, ${slot.programKind},
+            ${slot.refId}, ${slot.location}, ${slot.notes})
+    RETURNING id, mosque_id, day_of_week, period, start_time, title, program_kind, ref_id, location, notes, created_at
+  `;
+  return rowToSlot(rows[0]);
+}
+
+/** تعديل خانة — null إن لم توجد بهذا الجامع */
+export async function updateScheduleSlot(
+  mosqueId: number,
+  id: number,
+  changes: {
+    dayOfWeek: number;
+    period: SchedulePeriod;
+    startTime: string | null;
+    title: string;
+    programKind: ProgramKind;
+    refId: number | null;
+    location: string | null;
+    notes: string | null;
+  },
+): Promise<ScheduleSlot | null> {
+  const rows = await db().sql`
+    UPDATE schedule_slots SET
+      day_of_week = ${changes.dayOfWeek}, period = ${changes.period}, start_time = ${changes.startTime},
+      title = ${changes.title}, program_kind = ${changes.programKind}, ref_id = ${changes.refId},
+      location = ${changes.location}, notes = ${changes.notes}
+    WHERE mosque_id = ${mosqueId} AND id = ${id}
+    RETURNING id, mosque_id, day_of_week, period, start_time, title, program_kind, ref_id, location, notes, created_at
+  `;
+  return rows[0] ? rowToSlot(rows[0]) : null;
+}
+
+export async function deleteScheduleSlot(mosqueId: number, id: number): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM schedule_slots WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+/** ref_id لخانة جدول يجب أن يشير لكيان موجود بهذا الجامع نفسه — رسالة خطأ أو null */
+export async function checkScheduleRef(
+  mosqueId: number,
+  slot: { programKind: ProgramKind; refId: number | null },
+): Promise<string | null> {
+  if (slot.refId === null) return null;
+  if (slot.programKind === "halaqah") {
+    const halaqah = await getHalaqah(slot.refId);
+    return halaqah && halaqah.mosqueId === mosqueId ? null : "المرتبط ليس من هذا الجامع";
+  }
+  if (slot.programKind === "family") {
+    return (await getFamily(mosqueId, slot.refId)) !== null ? null : "المرتبط ليس من هذا الجامع";
+  }
+  if (slot.programKind === "committee") {
+    return (await getCommittee(mosqueId, slot.refId)) !== null ? null : "المرتبط ليس من هذا الجامع";
+  }
+  return null;
+}
+
+// ————— التقارير: قراءات مجمّعة لفترة ما (لا جداول جديدة) —————
+
+/** طلبات التسجيل بانتظار التوزيع */
+export async function countPendingRegistrations(mosqueId: number): Promise<number> {
+  const rows = await db().sql`
+    SELECT count(*)::int AS n FROM pending_students
+    WHERE mosque_id = ${mosqueId} AND status = 'pending'
+  `;
+  return Number(rows[0].n);
+}
+
+export async function countFamilies(mosqueId: number): Promise<number> {
+  const rows = await db().sql`SELECT count(*)::int AS n FROM families WHERE mosque_id = ${mosqueId}`;
+  return Number(rows[0].n);
+}
+
+/** لجان الجامع مع مهامها المفتوحة — المجموع يغذّي مؤشرات التقرير */
+export async function listCommitteeTaskSummaries(mosqueId: number): Promise<{ id: number; name: string; openTasks: number }[]> {
+  const rows = await db().sql`
+    SELECT c.id, c.name, count(ct.id) FILTER (WHERE ct.status <> 'done')::int AS open_tasks
+    FROM committees c
+    LEFT JOIN committee_tasks ct ON ct.committee_id = c.id
+    WHERE c.mosque_id = ${mosqueId}
+    GROUP BY c.id, c.name
+    ORDER BY c.name
+  `;
+  return rows.map((row) => ({ id: row.id as number, name: row.name as string, openTasks: row.open_tasks as number }));
+}
+
+export type EvaluationSummaryRow = { targetId: number; name: string; total: number; maxTotal: number };
+
+/**
+ * ملخص تقييمات فترة لهدف واحد من النوع: مجموع درجاته عبر أسابيع الفترة
+ * ومجميع درجاتها العظمى — لاحتساب النسبة والترتيب. الهدف الأسير بلا
+ * معيار (حذف معياره) لا يظهر إذ join المعيار inner.
+ */
+export async function listEvaluationSummaries(
+  mosqueId: number,
+  from: string,
+  to: string,
+  kind: TargetKind,
+): Promise<EvaluationSummaryRow[]> {
+  const rows =
+    kind === "family"
+      ? await db().sql`
+          SELECT e.target_id, t.name, SUM(e.score)::int AS total, SUM(ec.max_score)::int AS max_total
+          FROM evaluations e
+          JOIN evaluation_criteria ec ON ec.id = e.criterion_id
+          JOIN families t ON e.target_kind = 'family' AND t.id = e.target_id AND t.mosque_id = e.mosque_id
+          WHERE e.mosque_id = ${mosqueId} AND e.target_kind = 'family'
+            AND e.week_start >= ${from}::date AND e.week_start <= ${to}::date
+          GROUP BY e.target_id, t.name
+          ORDER BY total DESC, t.name
+        `
+      : await db().sql`
+          SELECT e.target_id, t.name, SUM(e.score)::int AS total, SUM(ec.max_score)::int AS max_total
+          FROM evaluations e
+          JOIN evaluation_criteria ec ON ec.id = e.criterion_id
+          JOIN pending_students t ON e.target_kind = 'student' AND t.id = e.target_id AND t.mosque_id = e.mosque_id
+          WHERE e.mosque_id = ${mosqueId} AND e.target_kind = 'student'
+            AND e.week_start >= ${from}::date AND e.week_start <= ${to}::date
+          GROUP BY e.target_id, t.name
+          ORDER BY total DESC, t.name
+        `;
+  return rows.map((row) => ({
+    targetId: row.target_id as number,
+    name: row.name as string,
+    total: row.total as number,
+    maxTotal: row.max_total as number,
+  }));
+}
+
+/** عدد الأوسمة الممنوحة خلال الفترة */
+export async function countBadgeAwardsBetween(mosqueId: number, from: string, to: string): Promise<number> {
+  const rows = await db().sql`
+    SELECT count(*)::int AS n FROM badge_awards
+    WHERE mosque_id = ${mosqueId} AND awarded_at >= ${from}::date AND awarded_at <= ${to}::date
+  `;
+  return Number(rows[0].n);
+}
+
+/** أكثر الأوسمة منحاً خلال الفترة */
+export async function listBadgeTopBetween(
+  mosqueId: number,
+  from: string,
+  to: string,
+): Promise<{ icon: string; name: string; count: number }[]> {
+  const rows = await db().sql`
+    SELECT b.icon, b.name, count(*)::int AS count
+    FROM badge_awards ba
+    JOIN badges b ON b.id = ba.badge_id AND b.mosque_id = ${mosqueId}
+    WHERE ba.mosque_id = ${mosqueId} AND ba.awarded_at >= ${from}::date AND ba.awarded_at <= ${to}::date
+    GROUP BY b.id, b.icon, b.name
+    ORDER BY count DESC, b.name
+  `;
+  return rows.map((row) => ({ icon: row.icon as string, name: row.name as string, count: row.count as number }));
+}
+
+/**
+ * عدد الأنشطة خلال الفترة — الأرشيف قد لا يكون منشوراً بعد، فوجود
+ * الجدول نفسه غير مضمون: null يعني «لا يوجد جدول أنشطة» (لا خطأ).
+ */
+export async function countActivitiesBetween(mosqueId: number, from: string, to: string): Promise<number | null> {
+  const exists = await db().sql`SELECT to_regclass('public.activities') AS reg`;
+  if (!exists[0]?.reg) return null;
+  try {
+    const rows = await db().sql`
+      SELECT count(*)::int AS n FROM activities
+      WHERE mosque_id = ${mosqueId} AND created_at::date >= ${from}::date AND created_at::date <= ${to}::date
+    `;
+    return Number(rows[0].n);
+  } catch {
+    return null;
+  }
+}

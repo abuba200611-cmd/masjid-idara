@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BrainIcon, ClipboardIcon, HomeIcon, SettingsIcon, ShieldIcon, StarIcon, UsersIcon } from "./icons";
+import { AwardIcon, BrainIcon, CalendarIcon, ChartIcon, ClipboardIcon, HomeIcon, SettingsIcon, ShieldIcon, StarIcon, UsersIcon } from "./icons";
 
 export type NavItem = { href: string; label: string; icon: ReactNode; active?: boolean };
 
@@ -47,6 +47,9 @@ export function mosqueNavItems(opts: {
   feature("families", "families", "الأسر", <UsersIcon />);
   feature("committees", "committees", "اللجان", <ClipboardIcon />);
   feature("weekly_evaluation", "evaluation", "التقييم الأسبوعي", <StarIcon />);
+  feature("badges", "badges", "الأوسمة", <AwardIcon />);
+  feature("weekly_schedule", "schedule", "الجدول الأسبوعي", <CalendarIcon />);
+  feature("reports", "reports", "التقارير", <ChartIcon />);
 
   if (extra) items.push(extra);
 
