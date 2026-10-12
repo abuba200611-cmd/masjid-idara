@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
-import { BrainIcon, HomeIcon, SettingsIcon, ShieldIcon } from "./icons";
+import { BrainIcon, ClipboardIcon, HomeIcon, SettingsIcon, ShieldIcon, StarIcon, UsersIcon } from "./icons";
 
 export type NavItem = { href: string; label: string; icon: ReactNode; active?: boolean };
 
 /**
  * عناصر سايدبار الجامع المشتركة بين صفحات /mosque/[id] — عنصر كل ميزة
- * ذات صفحات (حالياً: الدماغ) يظهر فقط إن كانت مفعّلة لهذا الجامع،
+ * ذات صفحات (الدماغ، الأسر، اللجان، التقييم الأسبوعي) يظهر فقط إن كانت مفعّلة لهذا الجامع،
  * والإعدادات دائماً. لإضافة ميزة جديدة بسايدبار: سطرها هنا + صفحاتها.
  */
 export function mosqueNavItems(opts: {
@@ -37,6 +37,16 @@ export function mosqueNavItems(opts: {
       active: activeHref === `/mosque/${mosqueId}/brain`,
     });
   }
+
+  /** عنصر لكل ميزة ذات صفحات — النشط إن كان المسار الحالي هو الصفحة أو أحد أبنائها */
+  const feature = (key: string, path: string, label: string, icon: ReactNode) => {
+    if (!features[key]) return;
+    const href = `/mosque/${mosqueId}/${path}`;
+    items.push({ href, label, icon, active: activeHref === href || activeHref?.startsWith(`${href}/`) });
+  };
+  feature("families", "families", "الأسر", <UsersIcon />);
+  feature("committees", "committees", "اللجان", <ClipboardIcon />);
+  feature("weekly_evaluation", "evaluation", "التقييم الأسبوعي", <StarIcon />);
 
   if (extra) items.push(extra);
 

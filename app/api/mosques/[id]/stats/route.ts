@@ -1,3 +1,4 @@
+import { parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { unauthorized } from "@/lib/admin-auth";
 import { canAccessMosque } from "@/lib/access";
 import { isFeatureEnabled, listHalaqahs } from "@/lib/db";
@@ -10,7 +11,8 @@ import { fetchHalaqahStats } from "@/lib/teacher-app";
  * اللوحة كاملة. معطّلة "الإحصائيات" عن الجامع = 404.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   if (!(await canAccessMosque(mosqueId))) return unauthorized();
   if (!(await isFeatureEnabled(mosqueId, "stats"))) {
     return Response.json({ error: "الإحصائيات غير مفعّلة لهذا الجامع" }, { status: 404 });

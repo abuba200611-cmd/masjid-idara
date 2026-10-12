@@ -9,14 +9,30 @@ import type { Halaqah, PendingStudent } from "@/lib/db";
 vi.mock("@/lib/db", () => ({
   getMosque: vi.fn(),
   getMosqueFeatures: vi.fn(),
+  isFeatureEnabled: vi.fn(),
   listBrainNotes: vi.fn(),
+  listCommitteeMemberLinks: vi.fn(),
+  listCommittees: vi.fn(),
+  listFamilies: vi.fn(),
+  listFamilyMemberLinks: vi.fn(),
   listHalaqahs: vi.fn(),
   listPendingStudents: vi.fn(),
 }));
 vi.mock("@/lib/teacher-app", () => ({ fetchHalaqahRoster: vi.fn() }));
 
 import { buildGraphContext, buildMosqueGraph } from "@/lib/brain-graph";
-import { getMosque, getMosqueFeatures, listBrainNotes, listHalaqahs, listPendingStudents } from "@/lib/db";
+import {
+  getMosque,
+  getMosqueFeatures,
+  isFeatureEnabled,
+  listBrainNotes,
+  listCommitteeMemberLinks,
+  listCommittees,
+  listFamilies,
+  listFamilyMemberLinks,
+  listHalaqahs,
+  listPendingStudents,
+} from "@/lib/db";
 import { fetchHalaqahRoster } from "@/lib/teacher-app";
 
 const halaqah = (id: number, name: string, code: string): Halaqah => ({
@@ -55,6 +71,11 @@ beforeEach(() => {
   vi.mocked(listHalaqahs).mockResolvedValue([halaqah(10, "الفجر", "A"), halaqah(11, "العصر", "B")]);
   vi.mocked(listPendingStudents).mockResolvedValue([]);
   vi.mocked(listBrainNotes).mockResolvedValue([]);
+  vi.mocked(isFeatureEnabled).mockResolvedValue(false);
+  vi.mocked(listFamilies).mockResolvedValue([]);
+  vi.mocked(listFamilyMemberLinks).mockResolvedValue([]);
+  vi.mocked(listCommittees).mockResolvedValue([]);
+  vi.mocked(listCommitteeMemberLinks).mockResolvedValue([]);
   vi.mocked(getMosqueFeatures).mockResolvedValue([
     { key: "halaqat", nameAr: "الحلقات", descriptionAr: "", defaultEnabled: true, status: "ready", enabled: true },
     { key: "stats", nameAr: "الإحصائيات", descriptionAr: "", defaultEnabled: true, status: "ready", enabled: false },
@@ -124,6 +145,53 @@ describe("buildMosqueGraph", () => {
     expect(graph.edges.filter((e) => e.kind === "link")).toEqual([
       { source: "note:أ", target: "note:ب", kind: "link" },
     ]);
+  });
+});
+
+describe("مصادر الأسر واللجان", () => {
+  const family = { id: 5, mosqueId: 1, name: "أسرة النور", leaderName: "خالد", notes: "", createdAt: "", memberCount: 2 };
+  const committee = { id: 7, mosqueId: 1, name: "لجنة الأنشطة", description: "", createdAt: "", memberCount: 2 };
+
+  it("الميزتان معطّلتان: لا عُقَد أسر ولا لجان ولا استعلامات لها", async () => {
+    const graph = await buildMosqueGraph(1);
+    expect(graph.nodes.some((n) => n.type === "family" || n.type === "committee" || n.type === "member")).toBe(false);
+    expect(listFamilies).not.toHaveBeenCalled();
+    expect(listCommittees).not.toHaveBeenCalled();
+  });
+
+  it("أسرة ← أفرادها: الطالب بعقدة التسجيل، والعضو الحر بعقدة مستقلة", async () => {
+    vi.mocked(isFeatureEnabled).mockImplementation(async (_id, key) => key === "families");
+    vi.mocked(listPendingStudents).mockResolvedValue([pending(1, "pending", null)]);
+    vi.mocked(listFamilies).mockResolvedValue([family]);
+    vi.mocked(listFamilyMemberLinks).mockResolvedValue([
+      { familyId: 5, memberKind: "student", memberId: 1, name: "طالب 1" },
+      { familyId: 5, memberKind: "member", memberId: 9, name: "أبو خالد" },
+    ]);
+    const graph = await buildMosqueGraph(1);
+
+    expect(graph.nodes.find((n) => n.id === "family:5")?.type).toBe("family");
+    expect(graph.nodes.find((n) => n.id === "member:9")?.type).toBe("member");
+    expect(graph.edges).toContainEqual({ source: "mosque:1", target: "family:5", kind: "family" });
+    expect(graph.edges).toContainEqual({ source: "family:5", target: "pending:1", kind: "family-member" });
+    expect(graph.edges).toContainEqual({ source: "family:5", target: "member:9", kind: "family-member" });
+    expect(listFamilies).toHaveBeenCalledWith(1);
+    expect(listFamilyMemberLinks).toHaveBeenCalledWith(1);
+    expect(listCommittees).not.toHaveBeenCalled();
+  });
+
+  it("لجنة ← أعضاؤها، والعضو الحر المشترك مع أسرة عقدة واحدة", async () => {
+    vi.mocked(isFeatureEnabled).mockResolvedValue(true);
+    vi.mocked(listFamilies).mockResolvedValue([family]);
+    vi.mocked(listFamilyMemberLinks).mockResolvedValue([{ familyId: 5, memberKind: "member", memberId: 9, name: "أبو خالد" }]);
+    vi.mocked(listCommittees).mockResolvedValue([committee]);
+    vi.mocked(listCommitteeMemberLinks).mockResolvedValue([
+      { committeeId: 7, memberKind: "member", memberId: 9, name: "أبو خالد", role: "رئيس" },
+    ]);
+    const graph = await buildMosqueGraph(1);
+
+    expect(graph.nodes.filter((n) => n.id === "member:9")).toHaveLength(1);
+    expect(graph.edges).toContainEqual({ source: "committee:7", target: "member:9", kind: "committee-member" });
+    expect(buildGraphContext(graph)).toContain("اللجان: 1");
   });
 });
 

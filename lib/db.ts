@@ -305,3 +305,638 @@ export async function listBrainNotes(mosqueId: number): Promise<BrainNote[]> {
   `;
   return rows.map(rowToBrainNote);
 }
+
+// ————— أعضاء بالاسم الحر (يكملون الطلاب في الأسر واللجان) —————
+
+/** "طالب" يشير إلى pending_students، و"عضو" إلى mosque_members */
+export type MemberKind = "student" | "member";
+/** هدف التقييم: أسرة أو طالب */
+export type TargetKind = "family" | "student";
+
+export type MosqueMember = {
+  id: number;
+  mosqueId: number;
+  name: string;
+  phone: string;
+  roleNote: string;
+  createdAt: string;
+};
+
+function rowToMosqueMember(row: Record<string, unknown>): MosqueMember {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    name: row.name as string,
+    phone: row.phone as string,
+    roleNote: row.role_note as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+export async function listMosqueMembers(mosqueId: number): Promise<MosqueMember[]> {
+  const rows = await db().sql`
+    SELECT id, mosque_id, name, phone, role_note, created_at
+    FROM mosque_members WHERE mosque_id = ${mosqueId} ORDER BY name
+  `;
+  return rows.map(rowToMosqueMember);
+}
+
+export async function createMosqueMember(
+  mosqueId: number,
+  member: { name: string; phone: string; roleNote: string },
+): Promise<MosqueMember> {
+  const rows = await db().sql`
+    INSERT INTO mosque_members (mosque_id, name, phone, role_note)
+    VALUES (${mosqueId}, ${member.name}, ${member.phone}, ${member.roleNote})
+    RETURNING id, mosque_id, name, phone, role_note, created_at
+  `;
+  return rowToMosqueMember(rows[0]);
+}
+
+export async function deleteMosqueMember(mosqueId: number, id: number): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM mosque_members WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id
+  `;
+  if (rows.length === 0) return false;
+  // لا أيتام: روابط العضو بالأسر واللجان (الدرجات لا تخص الأعضاء الأحرار: الهدف أسرة أو طالب)
+  await db().sql`
+    DELETE FROM family_members
+    WHERE member_kind = 'member' AND member_id = ${id}
+      AND family_id IN (SELECT id FROM families WHERE mosque_id = ${mosqueId})
+  `;
+  await db().sql`
+    DELETE FROM committee_members
+    WHERE member_kind = 'member' AND member_id = ${id}
+      AND committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
+  `;
+  return true;
+}
+
+/** اسم عضو من أفراد هذا الجامع (طالب أو حر)، أو null — تحقق قبل الإضافة لأسرة/لجنة */
+export async function findMemberName(
+  mosqueId: number,
+  kind: MemberKind,
+  memberId: number,
+): Promise<string | null> {
+  const rows =
+    kind === "student"
+      ? await db().sql`SELECT name FROM pending_students WHERE mosque_id = ${mosqueId} AND id = ${memberId}`
+      : await db().sql`SELECT name FROM mosque_members WHERE mosque_id = ${mosqueId} AND id = ${memberId}`;
+  return rows[0] ? (rows[0].name as string) : null;
+}
+
+// ————— الأسر —————
+
+export type Family = {
+  id: number;
+  mosqueId: number;
+  name: string;
+  leaderName: string;
+  notes: string;
+  createdAt: string;
+  memberCount: number;
+};
+
+function rowToFamily(row: Record<string, unknown>): Family {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    name: row.name as string,
+    leaderName: row.leader_name as string,
+    notes: row.notes as string,
+    createdAt: row.created_at as string,
+    memberCount: (row.member_count as number) ?? 0,
+  };
+}
+
+export async function listFamilies(mosqueId: number): Promise<Family[]> {
+  const rows = await db().sql`
+    SELECT f.id, f.mosque_id, f.name, f.leader_name, f.notes, f.created_at,
+           (SELECT count(*)::int FROM family_members fm WHERE fm.family_id = f.id) AS member_count
+    FROM families f
+    WHERE f.mosque_id = ${mosqueId}
+    ORDER BY f.name
+  `;
+  return rows.map(rowToFamily);
+}
+
+export async function getFamily(mosqueId: number, id: number): Promise<Family | null> {
+  const rows = await db().sql`
+    SELECT f.id, f.mosque_id, f.name, f.leader_name, f.notes, f.created_at,
+           (SELECT count(*)::int FROM family_members fm WHERE fm.family_id = f.id) AS member_count
+    FROM families f
+    WHERE f.mosque_id = ${mosqueId} AND f.id = ${id}
+  `;
+  const row = rows[0];
+  return row ? rowToFamily(row) : null;
+}
+
+export async function createFamily(
+  mosqueId: number,
+  family: { name: string; leaderName: string; notes: string },
+): Promise<Family> {
+  const rows = await db().sql`
+    INSERT INTO families (mosque_id, name, leader_name, notes)
+    VALUES (${mosqueId}, ${family.name}, ${family.leaderName}, ${family.notes})
+    RETURNING id, mosque_id, name, leader_name, notes, created_at
+  `;
+  return rowToFamily(rows[0]);
+}
+
+export async function deleteFamily(mosqueId: number, id: number): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM families WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id
+  `;
+  if (rows.length === 0) return false;
+  // درجات الأسرة المحذوفة لا معنى لها (الهدف بلا مفتاح أجنبي)
+  await db().sql`
+    DELETE FROM evaluations
+    WHERE mosque_id = ${mosqueId} AND target_kind = 'family' AND target_id = ${id}
+  `;
+  return true;
+}
+
+export type FamilyMember = {
+  id: number;
+  memberKind: MemberKind;
+  memberId: number;
+  name: string;
+  createdAt: string;
+};
+
+/** أفراد أسرة بأسمائهم — الطالب من pending_students والحرّ من mosque_members */
+export async function listFamilyMembers(mosqueId: number, familyId: number): Promise<FamilyMember[]> {
+  const rows = await db().sql`
+    SELECT fm.id, fm.member_kind, fm.member_id, fm.created_at,
+           COALESCE(ps.name, mm.name) AS name
+    FROM family_members fm
+    JOIN families f ON f.id = fm.family_id AND f.mosque_id = ${mosqueId}
+    LEFT JOIN pending_students ps ON fm.member_kind = 'student' AND ps.id = fm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON fm.member_kind = 'member' AND mm.id = fm.member_id AND mm.mosque_id = ${mosqueId}
+    WHERE fm.family_id = ${familyId} AND COALESCE(ps.name, mm.name) IS NOT NULL
+    ORDER BY name
+  `;
+  return rows.map((row) => ({
+    id: row.id as number,
+    memberKind: row.member_kind as MemberKind,
+    memberId: row.member_id as number,
+    name: row.name as string,
+    createdAt: row.created_at as string,
+  }));
+}
+
+/** إضافة فرد — false إن كان مضافاً أصلاً (الأسرة نفسها تُتحقق قبلها) */
+export async function addFamilyMember(
+  mosqueId: number,
+  familyId: number,
+  kind: MemberKind,
+  memberId: number,
+): Promise<boolean> {
+  const rows = await db().sql`
+    INSERT INTO family_members (family_id, member_kind, member_id)
+    SELECT ${familyId}::int, ${kind}::text, ${memberId}::int
+    WHERE EXISTS (SELECT 1 FROM families WHERE id = ${familyId} AND mosque_id = ${mosqueId})
+    ON CONFLICT (family_id, member_kind, member_id) DO NOTHING
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+export async function removeFamilyMember(
+  mosqueId: number,
+  familyId: number,
+  kind: MemberKind,
+  memberId: number,
+): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM family_members
+    WHERE family_id = ${familyId} AND member_kind = ${kind} AND member_id = ${memberId}
+      AND family_id IN (SELECT id FROM families WHERE mosque_id = ${mosqueId})
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+/** كل روابط أفراد الأسر بأسمائهم لجامع كامل — يغذّي رسم الدماغ بلا استعلام لكل أسرة */
+export async function listFamilyMemberLinks(
+  mosqueId: number,
+): Promise<{ familyId: number; memberKind: MemberKind; memberId: number; name: string }[]> {
+  const rows = await db().sql`
+    SELECT fm.family_id, fm.member_kind, fm.member_id, COALESCE(ps.name, mm.name) AS name
+    FROM family_members fm
+    JOIN families f ON f.id = fm.family_id AND f.mosque_id = ${mosqueId}
+    LEFT JOIN pending_students ps ON fm.member_kind = 'student' AND ps.id = fm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON fm.member_kind = 'member' AND mm.id = fm.member_id AND mm.mosque_id = ${mosqueId}
+    WHERE COALESCE(ps.name, mm.name) IS NOT NULL
+  `;
+  return rows.map((row) => ({
+    familyId: row.family_id as number,
+    memberKind: row.member_kind as MemberKind,
+    memberId: row.member_id as number,
+    name: row.name as string,
+  }));
+}
+
+// ————— اللجان —————
+
+export type Committee = {
+  id: number;
+  mosqueId: number;
+  name: string;
+  description: string;
+  createdAt: string;
+  memberCount: number;
+};
+
+function rowToCommittee(row: Record<string, unknown>): Committee {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    name: row.name as string,
+    description: row.description as string,
+    createdAt: row.created_at as string,
+    memberCount: (row.member_count as number) ?? 0,
+  };
+}
+
+export async function listCommittees(mosqueId: number): Promise<Committee[]> {
+  const rows = await db().sql`
+    SELECT c.id, c.mosque_id, c.name, c.description, c.created_at,
+           (SELECT count(*)::int FROM committee_members cm WHERE cm.committee_id = c.id) AS member_count
+    FROM committees c
+    WHERE c.mosque_id = ${mosqueId}
+    ORDER BY c.name
+  `;
+  return rows.map(rowToCommittee);
+}
+
+export async function getCommittee(mosqueId: number, id: number): Promise<Committee | null> {
+  const rows = await db().sql`
+    SELECT c.id, c.mosque_id, c.name, c.description, c.created_at,
+           (SELECT count(*)::int FROM committee_members cm WHERE cm.committee_id = c.id) AS member_count
+    FROM committees c
+    WHERE c.mosque_id = ${mosqueId} AND c.id = ${id}
+  `;
+  const row = rows[0];
+  return row ? rowToCommittee(row) : null;
+}
+
+export async function createCommittee(
+  mosqueId: number,
+  committee: { name: string; description: string },
+): Promise<Committee> {
+  const rows = await db().sql`
+    INSERT INTO committees (mosque_id, name, description)
+    VALUES (${mosqueId}, ${committee.name}, ${committee.description})
+    RETURNING id, mosque_id, name, description, created_at
+  `;
+  return rowToCommittee(rows[0]);
+}
+
+export async function deleteCommittee(mosqueId: number, id: number): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM committees WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+export type CommitteeMember = {
+  id: number;
+  memberKind: MemberKind;
+  memberId: number;
+  name: string;
+  role: string;
+  createdAt: string;
+};
+
+/** أعضاء لجنة بأسمائهم — مثل أفراد الأسرة لكن مع الدور (رئيس/عضو…) */
+export async function listCommitteeMembers(
+  mosqueId: number,
+  committeeId: number,
+): Promise<CommitteeMember[]> {
+  const rows = await db().sql`
+    SELECT cm.id, cm.member_kind, cm.member_id, cm.role, cm.created_at,
+           COALESCE(ps.name, mm.name) AS name
+    FROM committee_members cm
+    JOIN committees c ON c.id = cm.committee_id AND c.mosque_id = ${mosqueId}
+    LEFT JOIN pending_students ps ON cm.member_kind = 'student' AND ps.id = cm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON cm.member_kind = 'member' AND mm.id = cm.member_id AND mm.mosque_id = ${mosqueId}
+    WHERE cm.committee_id = ${committeeId} AND COALESCE(ps.name, mm.name) IS NOT NULL
+    ORDER BY name
+  `;
+  return rows.map((row) => ({
+    id: row.id as number,
+    memberKind: row.member_kind as MemberKind,
+    memberId: row.member_id as number,
+    name: row.name as string,
+    role: row.role as string,
+    createdAt: row.created_at as string,
+  }));
+}
+
+/** إضافة عضو بدور نصي — false إن كان مضافاً أصلاً (اللجنة نفسها تُتحقق قبلها) */
+export async function addCommitteeMember(
+  mosqueId: number,
+  committeeId: number,
+  kind: MemberKind,
+  memberId: number,
+  role: string,
+): Promise<boolean> {
+  const rows = await db().sql`
+    INSERT INTO committee_members (committee_id, member_kind, member_id, role)
+    SELECT ${committeeId}::int, ${kind}::text, ${memberId}::int, ${role}::text
+    WHERE EXISTS (SELECT 1 FROM committees WHERE id = ${committeeId} AND mosque_id = ${mosqueId})
+    ON CONFLICT (committee_id, member_kind, member_id) DO NOTHING
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+export async function removeCommitteeMember(
+  mosqueId: number,
+  committeeId: number,
+  kind: MemberKind,
+  memberId: number,
+): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM committee_members
+    WHERE committee_id = ${committeeId} AND member_kind = ${kind} AND member_id = ${memberId}
+      AND committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+/** كل روابط أعضاء اللجان بأسمائهم لجامع كامل — يغذّي رسم الدماغ */
+export async function listCommitteeMemberLinks(
+  mosqueId: number,
+): Promise<{ committeeId: number; memberKind: MemberKind; memberId: number; name: string; role: string }[]> {
+  const rows = await db().sql`
+    SELECT cm.committee_id, cm.member_kind, cm.member_id, cm.role, COALESCE(ps.name, mm.name) AS name
+    FROM committee_members cm
+    JOIN committees c ON c.id = cm.committee_id AND c.mosque_id = ${mosqueId}
+    LEFT JOIN pending_students ps ON cm.member_kind = 'student' AND ps.id = cm.member_id AND ps.mosque_id = ${mosqueId}
+    LEFT JOIN mosque_members mm ON cm.member_kind = 'member' AND mm.id = cm.member_id AND mm.mosque_id = ${mosqueId}
+    WHERE COALESCE(ps.name, mm.name) IS NOT NULL
+  `;
+  return rows.map((row) => ({
+    committeeId: row.committee_id as number,
+    memberKind: row.member_kind as MemberKind,
+    memberId: row.member_id as number,
+    name: row.name as string,
+    role: row.role as string,
+  }));
+}
+
+// ————— مهام اللجان (لوحة ثلاث أعمدة) —————
+
+export type TaskStatus = "todo" | "doing" | "done";
+
+export type CommitteeTask = {
+  id: number;
+  committeeId: number;
+  title: string;
+  status: TaskStatus;
+  dueDate: string | null;
+  createdAt: string;
+};
+
+function rowToTask(row: Record<string, unknown>): CommitteeTask {
+  return {
+    id: row.id as number,
+    committeeId: row.committee_id as number,
+    title: row.title as string,
+    status: row.status as TaskStatus,
+    dueDate: (row.due_date as string | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export async function listCommitteeTasks(
+  mosqueId: number,
+  committeeId: number,
+): Promise<CommitteeTask[]> {
+  const rows = await db().sql`
+    SELECT ct.id, ct.committee_id, ct.title, ct.status, ct.due_date::text AS due_date, ct.created_at
+    FROM committee_tasks ct
+    WHERE ct.committee_id = ${committeeId}
+      AND ct.committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
+    ORDER BY ct.created_at DESC
+  `;
+  return rows.map(rowToTask);
+}
+
+export async function createCommitteeTask(
+  mosqueId: number,
+  committeeId: number,
+  task: { title: string; dueDate: string | null },
+): Promise<CommitteeTask | null> {
+  const rows = await db().sql`
+    INSERT INTO committee_tasks (committee_id, title, due_date)
+    SELECT ${committeeId}::int, ${task.title}::text, ${task.dueDate}::date
+    WHERE EXISTS (SELECT 1 FROM committees WHERE id = ${committeeId} AND mosque_id = ${mosqueId})
+    RETURNING id, committee_id, title, status, due_date::text AS due_date, created_at
+  `;
+  return rows[0] ? rowToTask(rows[0]) : null;
+}
+
+/** تغيير حالة مهمة — null إن لم توجد بهذه اللجنة (أو ليست من جوامعنا) */
+export async function setCommitteeTaskStatus(
+  mosqueId: number,
+  committeeId: number,
+  taskId: number,
+  status: TaskStatus,
+): Promise<CommitteeTask | null> {
+  const rows = await db().sql`
+    UPDATE committee_tasks SET status = ${status}
+    WHERE id = ${taskId} AND committee_id = ${committeeId}
+      AND committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
+    RETURNING id, committee_id, title, status, due_date::text AS due_date, created_at
+  `;
+  return rows[0] ? rowToTask(rows[0]) : null;
+}
+
+export async function deleteCommitteeTask(
+  mosqueId: number,
+  committeeId: number,
+  taskId: number,
+): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM committee_tasks
+    WHERE id = ${taskId} AND committee_id = ${committeeId}
+      AND committee_id IN (SELECT id FROM committees WHERE mosque_id = ${mosqueId})
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+// ————— التقييم الأسبوعي: معايير الجامع ثم درجات الأسبوع —————
+
+export type Criterion = {
+  id: number;
+  mosqueId: number;
+  name: string;
+  maxScore: number;
+  sortOrder: number;
+  active: boolean;
+  createdAt: string;
+};
+
+function rowToCriterion(row: Record<string, unknown>): Criterion {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    name: row.name as string,
+    maxScore: row.max_score as number,
+    sortOrder: row.sort_order as number,
+    active: row.active === true,
+    createdAt: row.created_at as string,
+  };
+}
+
+export async function listCriteria(mosqueId: number): Promise<Criterion[]> {
+  const rows = await db().sql`
+    SELECT id, mosque_id, name, max_score, sort_order, active, created_at
+    FROM evaluation_criteria WHERE mosque_id = ${mosqueId}
+    ORDER BY sort_order, id
+  `;
+  return rows.map(rowToCriterion);
+}
+
+/** إنشاء معيار — null إن وُجد آخر بنفس الاسم (409 عند المستدعي). الترتيب يُبنى تلقائياً */
+export async function createCriterion(
+  mosqueId: number,
+  criterion: { name: string; maxScore: number },
+): Promise<Criterion | null> {
+  const conflict = await db().sql`
+    SELECT id FROM evaluation_criteria WHERE mosque_id = ${mosqueId} AND name = ${criterion.name}
+  `;
+  if (conflict[0]) return null;
+
+  const rows = await db().sql`
+    INSERT INTO evaluation_criteria (mosque_id, name, max_score, sort_order)
+    VALUES (${mosqueId}, ${criterion.name}, ${criterion.maxScore},
+            (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM evaluation_criteria WHERE mosque_id = ${mosqueId}))
+    RETURNING id, mosque_id, name, max_score, sort_order, active, created_at
+  `;
+  return rowToCriterion(rows[0]);
+}
+
+/** المقترح الافتراضي للجامع — يضيف الناقص فقط (تعارض الاسم يتجاهل) ويعيد المعايير كلها */
+export const SUGGESTED_CRITERIA: readonly { name: string; maxScore: number }[] = [
+  { name: "الحضور", maxScore: 10 },
+  { name: "الحفظ", maxScore: 10 },
+  { name: "المراجعة", maxScore: 10 },
+  { name: "البرنامج النوعي", maxScore: 10 },
+  { name: "الاجتماع الأسري", maxScore: 10 },
+];
+
+export async function seedSuggestedCriteria(mosqueId: number): Promise<Criterion[]> {
+  for (const [index, criterion] of SUGGESTED_CRITERIA.entries()) {
+    await db().sql`
+      INSERT INTO evaluation_criteria (mosque_id, name, max_score, sort_order)
+      VALUES (${mosqueId}, ${criterion.name}, ${criterion.maxScore}, ${index + 1})
+      ON CONFLICT (mosque_id, name) DO NOTHING
+    `;
+  }
+  return listCriteria(mosqueId);
+}
+
+/** تحديث معيار (اسم/درجة عظمى/تفعيل) — null إن لم يوجد بهذا الجامع، و"conflict" إن تكرر الاسم */
+export async function updateCriterion(
+  mosqueId: number,
+  id: number,
+  changes: { name?: string; maxScore?: number; active?: boolean },
+): Promise<Criterion | "conflict" | null> {
+  const existing = await db().sql`
+    SELECT id, mosque_id, name, max_score, sort_order, active, created_at
+    FROM evaluation_criteria WHERE mosque_id = ${mosqueId} AND id = ${id}
+  `;
+  if (!existing[0]) return null;
+
+  const name = changes.name ?? (existing[0].name as string);
+  const maxScore = changes.maxScore ?? (existing[0].max_score as number);
+  const active = changes.active ?? existing[0].active === true;
+
+  if (changes.name !== undefined && name !== (existing[0].name as string)) {
+    const conflict = await db().sql`
+      SELECT id FROM evaluation_criteria WHERE mosque_id = ${mosqueId} AND name = ${name} AND id <> ${id}
+    `;
+    if (conflict[0]) return "conflict";
+  }
+
+  const rows = await db().sql`
+    UPDATE evaluation_criteria SET name = ${name}, max_score = ${maxScore}, active = ${active}
+    WHERE mosque_id = ${mosqueId} AND id = ${id}
+    RETURNING id, mosque_id, name, max_score, sort_order, active, created_at
+  `;
+  return rows[0] ? rowToCriterion(rows[0]) : null;
+}
+
+export async function deleteCriterion(mosqueId: number, id: number): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM evaluation_criteria WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+/** أهداف التقييم لأسبوع ما: الأسر أو الطلاب — بأسمائها فقط */
+export async function listEvaluationTargets(
+  mosqueId: number,
+  kind: TargetKind,
+): Promise<{ id: number; name: string }[]> {
+  const rows =
+    kind === "family"
+      ? await db().sql`SELECT id, name FROM families WHERE mosque_id = ${mosqueId} ORDER BY name`
+      : await db().sql`SELECT id, name FROM pending_students WHERE mosque_id = ${mosqueId} ORDER BY name`;
+  return rows.map((row) => ({ id: row.id as number, name: row.name as string }));
+}
+
+export type EvaluationEntry = {
+  targetId: number;
+  criterionId: number;
+  score: number;
+  note: string;
+};
+
+export async function listWeekEvaluations(
+  mosqueId: number,
+  weekStart: string,
+  targetKind: TargetKind,
+): Promise<EvaluationEntry[]> {
+  const rows = await db().sql`
+    SELECT target_id, criterion_id, score, note
+    FROM evaluations
+    WHERE mosque_id = ${mosqueId} AND week_start = ${weekStart} AND target_kind = ${targetKind}
+  `;
+  return rows.map((row) => ({
+    targetId: row.target_id as number,
+    criterionId: row.criterion_id as number,
+    score: row.score as number,
+    note: row.note as string,
+  }));
+}
+
+/**
+ * حفظ درجات الأسبوع — upsert: الخلية الواحدة (أسبوع، هدف، معيار) فريدة
+ * بجدول البيانات، فالحفظ الجديد يستبدل القديم. المدخلات صُحّحت قبلها
+ * بالمسار (المعيار من جوامعنا، الدرجة 0..الكبرى، الهدف موجود).
+ */
+export async function upsertEvaluations(
+  mosqueId: number,
+  weekStart: string,
+  targetKind: TargetKind,
+  entries: EvaluationEntry[],
+): Promise<void> {
+  // دفعات صغيرة حتى لا تُغرق مجمّع الاتصالات بمئات الاستعلامات المتوازية
+  for (let i = 0; i < entries.length; i += 20) {
+    await Promise.all(
+      entries.slice(i, i + 20).map((entry) => db().sql`
+        INSERT INTO evaluations (mosque_id, week_start, target_kind, target_id, criterion_id, score, note)
+        VALUES (${mosqueId}, ${weekStart}, ${targetKind}, ${entry.targetId}, ${entry.criterionId}, ${entry.score}, ${entry.note})
+        ON CONFLICT (week_start, target_kind, target_id, criterion_id)
+        DO UPDATE SET score = excluded.score, note = excluded.note, updated_at = now()
+      `),
+    );
+  }
+}

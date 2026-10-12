@@ -3,9 +3,15 @@ import "server-only";
 import {
   getMosque,
   getMosqueFeatures,
+  isFeatureEnabled,
   listBrainNotes,
+  listCommitteeMemberLinks,
+  listCommittees,
+  listFamilies,
+  listFamilyMemberLinks,
   listHalaqahs,
   listPendingStudents,
+  type MemberKind,
 } from "./db";
 import { parseLinks } from "./brain";
 import type { GraphEdge, GraphNode, MosqueGraph, NodeType } from "./graph-types";
@@ -22,6 +28,18 @@ export type GraphSource = (mosqueId: number) => Promise<MosqueGraph>;
 export const mosqueNodeId = (mosqueId: number) => `mosque:${mosqueId}`;
 export const halaqahNodeId = (halaqahId: number) => `halaqah:${halaqahId}`;
 export const PENDING_HUB_ID = "pending-hub";
+export const familyNodeId = (familyId: number) => `family:${familyId}`;
+export const committeeNodeId = (committeeId: number) => `committee:${committeeId}`;
+
+/** عقدة الفرد: الطالب هو نفسه عقدة طلب التسجيل `pending:{id}`، والعضو الحر عقدة مستقلة */
+const memberNodeId = (kind: MemberKind, memberId: number) => (kind === "student" ? `pending:${memberId}` : `member:${memberId}`);
+
+/** عُقَد الأعضاء الأحرار — قد تتكرر بين أسرة ولجنة، والتكرار يُحذف بـ buildMosqueGraph */
+function freeMemberNodes(links: { memberKind: MemberKind; memberId: number; name: string }[]): GraphNode[] {
+  return links
+    .filter((link) => link.memberKind === "member")
+    .map((link) => ({ id: memberNodeId("member", link.memberId), type: "member" as const, label: link.name, meta: {} }));
+}
 
 const mosqueSource: GraphSource = async (mosqueId) => {
   const mosque = await getMosque(mosqueId);
@@ -130,12 +148,68 @@ const notesSource: GraphSource = async (mosqueId) => {
   };
 };
 
+/** الأسر: جامع ← أسرة ← أفرادها (طلاب بعُقَد التسجيل، وأعضاء أحرار) — فقط إن كانت الميزة مفعّلة */
+const familiesSource: GraphSource = async (mosqueId) => {
+  if (!(await isFeatureEnabled(mosqueId, "families"))) return { nodes: [], edges: [] };
+  const [families, links] = await Promise.all([listFamilies(mosqueId), listFamilyMemberLinks(mosqueId)]);
+  return {
+    nodes: [
+      ...families.map((family) => ({
+        id: familyNodeId(family.id),
+        type: "family" as const,
+        label: family.name,
+        meta: { leader: family.leaderName, memberCount: family.memberCount },
+      })),
+      ...freeMemberNodes(links),
+    ],
+    edges: [
+      ...families.map((family) => ({ source: mosqueNodeId(mosqueId), target: familyNodeId(family.id), kind: "family" })),
+      ...links.map((link) => ({
+        source: familyNodeId(link.familyId),
+        target: memberNodeId(link.memberKind, link.memberId),
+        kind: "family-member",
+      })),
+    ],
+  };
+};
+
+/** اللجان: جامع ← لجنة ← أعضاؤها (الدور على الحافّة لا العقدة) — فقط إن كانت الميزة مفعّلة */
+const committeesSource: GraphSource = async (mosqueId) => {
+  if (!(await isFeatureEnabled(mosqueId, "committees"))) return { nodes: [], edges: [] };
+  const [committees, links] = await Promise.all([listCommittees(mosqueId), listCommitteeMemberLinks(mosqueId)]);
+  return {
+    nodes: [
+      ...committees.map((committee) => ({
+        id: committeeNodeId(committee.id),
+        type: "committee" as const,
+        label: committee.name,
+        meta: { memberCount: committee.memberCount },
+      })),
+      ...freeMemberNodes(links),
+    ],
+    edges: [
+      ...committees.map((committee) => ({
+        source: mosqueNodeId(mosqueId),
+        target: committeeNodeId(committee.id),
+        kind: "committee",
+      })),
+      ...links.map((link) => ({
+        source: committeeNodeId(link.committeeId),
+        target: memberNodeId(link.memberKind, link.memberId),
+        kind: "committee-member",
+      })),
+    ],
+  };
+};
+
 export const GRAPH_SOURCES: readonly GraphSource[] = [
   mosqueSource,
   halaqatSource,
   registrationsSource,
   featuresSource,
   notesSource,
+  familiesSource,
+  committeesSource,
 ];
 
 /** الرسم الكامل للجامع — تُحذف الحوافّ التي لأحد طرفيها عقدة غير موجودة، والمعرّفات المكررة */
@@ -167,6 +241,10 @@ export function buildGraphContext(graph: MosqueGraph): string {
     `المزايا المفعّلة: ${features.map((node) => node.label).join("، ") || "لا شيء"}`,
   ];
   if (byType("note").length > 0) lines.push(`ملاحظات: ${byType("note").length}`);
+  if (byType("family").length > 0) lines.push(`الأسر: ${byType("family").length}`);
+  if (byType("committee").length > 0) lines.push(`اللجان: ${byType("committee").length}`);
+  if (byType("family").length > 0) lines.push(`الأسر: ${byType("family").length}`);
+  if (byType("committee").length > 0) lines.push(`اللجان: ${byType("committee").length}`);
 
   if (halaqahs.length > 0) {
     lines.push("", "الحلقات:");

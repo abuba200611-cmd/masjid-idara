@@ -216,3 +216,41 @@ describe("تجديد الرمز يبطل القديم (قاعدة وهمية ب�
     expect(await real.findMosqueByTeacherJoinCode(second!)).not.toBeNull();
   });
 });
+
+describe("حذف عضو حر ينظّف روابطه (قاعدة وهمية)", () => {
+  it("يحذف family_members وcommittee_members بنوع member مقيّدة بالجامع", async () => {
+    vi.resetModules();
+    vi.doUnmock("@/lib/db");
+    const calls: { text: string; values: unknown[] }[] = [];
+    vi.doMock("@netlify/database", () => ({
+      getDatabase: () => ({
+        sql: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          const text = strings.join("?");
+          calls.push({ text, values });
+          return /DELETE FROM mosque_members/.test(text) ? [{ id: 9 }] : [];
+        },
+      }),
+    }));
+    const real = await import("@/lib/db");
+    expect(await real.deleteMosqueMember(4, 9)).toBe(true);
+    const fam = calls.find((c) => /DELETE FROM family_members/.test(c.text))!;
+    const com = calls.find((c) => /DELETE FROM committee_members/.test(c.text))!;
+    for (const c of [fam, com]) {
+      expect(c.text).toMatch(/member_kind = 'member'/);
+      expect(c.text).toMatch(/mosque_id = \?/);
+      expect(c.values).toEqual([9, 4]);
+    }
+  });
+
+  it("عضو غير موجود: لا حذف للروابط", async () => {
+    vi.resetModules();
+    vi.doUnmock("@/lib/db");
+    const calls: string[] = [];
+    vi.doMock("@netlify/database", () => ({
+      getDatabase: () => ({ sql: async (s: TemplateStringsArray) => (calls.push(s.join("?")), []) }),
+    }));
+    const real = await import("@/lib/db");
+    expect(await real.deleteMosqueMember(4, 9)).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+});

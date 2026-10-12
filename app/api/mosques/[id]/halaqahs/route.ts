@@ -1,3 +1,4 @@
+import { parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { unauthorized } from "@/lib/admin-auth";
 import { canAccessMosque } from "@/lib/access";
 import { createHalaqah, getMosque, isFeatureEnabled } from "@/lib/db";
@@ -9,7 +10,8 @@ import { fetchHalaqahInfo } from "@/lib/teacher-app";
  * للخطأ)، فلو الرمز غلط يرفض الإضافة فوراً بدل ما يحفظ ربطاً معطوباً.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const mosqueId = Number((await params).id);
+  const mosqueId = parsePositiveIntParam((await params).id);
+  if (mosqueId === null) return paramNotFound();
   if (!(await canAccessMosque(mosqueId))) return unauthorized();
   if (!(await getMosque(mosqueId))) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
   if (!(await isFeatureEnabled(mosqueId, "halaqat"))) {
