@@ -34,7 +34,11 @@ function prepare(graph: MosqueGraph): Prepared {
   return { nodes: graph.nodes, degrees: neighbors.map((list) => list.length), neighbors, links };
 }
 
-const radiusOf = (type: NodeType, degree: number) => BASE_RADIUS[type] + Math.sqrt(degree) * 1.5;
+const radiusOf = (node: GraphNode, degree: number) =>
+  BASE_RADIUS[node.type] +
+  Math.sqrt(degree) * 1.5 +
+  // طالب أعلى تفاعلاً يكبر قليلاً — التفاعل من مقاييس نظام المعلّم
+  (typeof node.meta.engagementScore === "number" ? (node.meta.engagementScore / 100) * 1.5 : 0);
 
 function createEngine(
   canvas: HTMLCanvasElement,
@@ -43,7 +47,7 @@ function createEngine(
   onSelect: (index: number) => void,
 ): Engine {
   const ctx = canvas.getContext("2d");
-  const sim: SimNode[] = data.nodes.map((node, i) => createSimNode(i, radiusOf(node.type, data.degrees[i])));
+  const sim: SimNode[] = data.nodes.map((node, i) => createSimNode(i, radiusOf(node, data.degrees[i])));
   const isHub = (i: number) =>
     data.nodes[i].type === "mosque" ||
     data.nodes[i].type === "halaqah" ||
@@ -358,11 +362,17 @@ const META_LABELS: Record<string, string> = {
   tags: "الوسوم",
   leader: "رئيس الأسرة",
   memberCount: "عدد الأفراد",
+  engagementScore: "درجة التفاعل",
+  avgEngagement: "متوسط التفاعل",
+  attendanceRate: "نسبة الحضور",
+  streak: "أيام متتابعة",
 };
 
 function metaValue(key: string, value: string | number | boolean): string {
   if (key === "error") return "تعذّر جلب الطلاب من نظام المعلّم";
   if (key === "status") return value === "pending" ? "بانتظار التوزيع" : "موزَّع على حلقة";
+  // درجات نظام المعلّم (0-100) تُعرض بنسبة مئوية
+  if (key === "engagementScore" || key === "avgEngagement" || key === "attendanceRate") return `${value}٪`;
   if (typeof value === "boolean") return value ? "نعم" : "لا";
   return String(value);
 }

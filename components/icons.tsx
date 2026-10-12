@@ -160,6 +160,16 @@ export function AwardIcon({ className = base }: IconProps) {
   );
 }
 
+export function TrophyIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M8 4h8v6a4 4 0 0 1-8 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 5H5a3 3 0 0 0 3 5M16 5h3a3 3 0 0 1-3 5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 14v3M9 20h6M10 17h4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function CalendarIcon({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>

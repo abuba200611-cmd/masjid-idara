@@ -21,7 +21,7 @@ vi.mock("@/lib/db", () => ({
   listHalaqahs: vi.fn(),
   listPendingStudents: vi.fn(),
 }));
-vi.mock("@/lib/teacher-app", () => ({ fetchHalaqahRoster: vi.fn() }));
+vi.mock("@/lib/teacher-app", () => ({ fetchHalaqahRoster: vi.fn(), fetchHalaqahMetrics: vi.fn() }));
 
 import { buildGraphContext, buildMosqueGraph } from "@/lib/brain-graph";
 import {
@@ -39,7 +39,7 @@ import {
   listHalaqahs,
   listPendingStudents,
 } from "@/lib/db";
-import { fetchHalaqahRoster } from "@/lib/teacher-app";
+import { fetchHalaqahMetrics, fetchHalaqahRoster } from "@/lib/teacher-app";
 
 const halaqah = (id: number, name: string, code: string): Halaqah => ({
   id,
@@ -95,6 +95,7 @@ beforeEach(() => {
     halaqahName: code,
     students: code === "A" ? [student("أحمد"), student("بلال")] : [student("سعد")],
   }));
+  vi.mocked(fetchHalaqahMetrics).mockResolvedValue(null);
 });
 
 describe("buildMosqueGraph", () => {

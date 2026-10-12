@@ -8,6 +8,14 @@ import { useApi } from "@/components/use-api";
 import { PERIOD_CHOICES, periodLabel, type PeriodChoice } from "@/lib/report-periods";
 
 type TopRow = { name: string; total: number; maxTotal: number; percent: number };
+type HalaqahMetricsSummary = {
+  attendanceRate: number | null;
+  wardsSubmitted: number;
+  wardsApproved: number;
+  planOnTrackRatio: number | null;
+  recitationsCount: number;
+  recitationsAvgScore: number | null;
+};
 type ReportData = {
   mosque: { name: string; city: string };
   period: { from: string; to: string };
@@ -34,7 +42,14 @@ type ReportData = {
   topFamilies: TopRow[];
   topStudents: TopRow[];
   badges: { icon: string; name: string; count: number }[];
-  halaqat: { name: string; teacher: string; activeStudents: number | null; avgMastery: number | null; totalPages: number | null }[];
+  halaqat: {
+    name: string;
+    teacher: string;
+    activeStudents: number | null;
+    avgMastery: number | null;
+    totalPages: number | null;
+    metrics: HalaqahMetricsSummary | null;
+  }[];
 };
 
 /** تقرير الفترة المختارة — مؤشرات وترتيب وحلقات، مع طباعة وتصدير CSV */
@@ -170,7 +185,11 @@ function ReportBody({ data }: { data: ReportData }) {
       )}
 
       {enabled.halaqat && (
-        <TableCard title="الحلقات" filename="report-halaqat.csv" headers={["الحلقة", "المعلّم", "الطلاب النشطون", "متوسط الإتقان", "إجمالي المحفوظ"]}>
+        <TableCard
+          title="الحلقات"
+          filename="report-halaqat.csv"
+          headers={["الحلقة", "المعلّم", "الطلاب النشطون", "متوسط الإتقان", "إجمالي المحفوظ", "الحضور", "وردات معتمدة", "الخطة على المسار", "التسميعات"]}
+        >
           {data.halaqat.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">لا حلقات بعد.</p>
           ) : (
@@ -185,6 +204,26 @@ function ReportBody({ data }: { data: ReportData }) {
                   {halaqah.avgMastery === null ? "—" : `${halaqah.avgMastery}٪`}
                 </td>
                 <td className="tabular px-2 py-2 text-center">{halaqah.totalPages ?? "—"}</td>
+                <td className="tabular px-2 py-2 text-center">
+                  {halaqah.metrics?.attendanceRate == null ? "—" : `${Math.round(halaqah.metrics.attendanceRate)}٪`}
+                </td>
+                <td
+                  className="tabular px-2 py-2 text-center"
+                  title={halaqah.metrics ? `من ${halaqah.metrics.wardsSubmitted} مُقدَّمة` : undefined}
+                >
+                  {halaqah.metrics ? halaqah.metrics.wardsApproved : "—"}
+                </td>
+                <td className="tabular px-2 py-2 text-center">
+                  {halaqah.metrics?.planOnTrackRatio == null
+                    ? "—"
+                    : `${Math.round(halaqah.metrics.planOnTrackRatio * 100)}٪`}
+                </td>
+                <td
+                  className="tabular px-2 py-2 text-center"
+                  title={halaqah.metrics?.recitationsAvgScore != null ? `متوسط ${halaqah.metrics.recitationsAvgScore}` : undefined}
+                >
+                  {halaqah.metrics ? halaqah.metrics.recitationsCount : "—"}
+                </td>
               </tr>
             ))
           )}

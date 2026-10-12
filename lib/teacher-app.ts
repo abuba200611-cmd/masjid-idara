@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { HalaqahMetrics } from "./honor-board";
+
 /*
   عميل نداءات خادم-لخادم لنظام المعلّم (halaqat-tahfeez) — نفس السرّ
   المشترك (x-link-secret) المستخدم أصلاً بين حلقات وتسجيل-طلاب.
@@ -79,5 +81,32 @@ export async function addStudentToTeacherApp(inviteCode: string, studentName: st
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * مقاييس حلقة لفترة (تفاعل الطلاب، حضور، خطة، وردات، تسميعات) — أساس
+ * لوحة الشرف والتقارير. نفس تسامح بقية النداءات: مهلة قصيرة وأي فشل = null.
+ */
+export async function fetchHalaqahMetrics(
+  inviteCode: string,
+  from: string,
+  to: string,
+): Promise<HalaqahMetrics | null> {
+  const { url, secret } = requireConfig();
+  try {
+    const query = new URLSearchParams({ invite: inviteCode, from, to });
+    const res = await fetch(`${url}/api/link/metrics?${query}`, {
+      headers: { "x-link-secret": secret },
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as HalaqahMetrics | null;
+    // شكل غير متوقع = غير متاح (لا يكسر الترتيب بعدها)
+    if (!body || !Array.isArray(body.students) || !body.totals || !body.halaqah) return null;
+    return body;
+  } catch {
+    return null;
   }
 }

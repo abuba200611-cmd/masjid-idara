@@ -94,6 +94,13 @@ export const FEATURES: readonly Feature[] = [
     status: "ready",
   },
   {
+    key: "honor_board",
+    nameAr: "لوحة الشرف",
+    descriptionAr: "ترتيب الحلقات والطلاب بدرجات التفاعل من نظام المعلّم وبرامج الجامع، مع منصّة المتصدّرين.",
+    defaultEnabled: true,
+    status: "ready",
+  },
+  {
     key: "agent",
     nameAr: "المساعد الذكي",
     descriptionAr: "مساعد ذكي يجيب عن بيانات الجامع وملاحظاته.",

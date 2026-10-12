@@ -36,7 +36,7 @@ vi.mock("@/lib/db", () => ({
   listBadgeTopBetween: vi.fn(),
   countActivitiesBetween: vi.fn(),
 }));
-vi.mock("@/lib/teacher-app", () => ({ fetchHalaqahStats: vi.fn() }));
+vi.mock("@/lib/teacher-app", () => ({ fetchHalaqahStats: vi.fn(), fetchHalaqahMetrics: vi.fn() }));
 
 import { GET as BADGES_GET, POST as BADGES_POST } from "../app/api/mosques/[id]/badges/route";
 import { POST as SUGGESTED_POST } from "../app/api/mosques/[id]/badges/suggested/route";
@@ -48,7 +48,7 @@ import { GET as PUBLIC_SCHEDULE_GET } from "../app/api/mosques/[id]/public/sched
 import { GET as REPORTS_GET } from "../app/api/mosques/[id]/reports/route";
 import { canAccessMosque } from "@/lib/access";
 import * as db from "@/lib/db";
-import { fetchHalaqahStats } from "@/lib/teacher-app";
+import { fetchHalaqahMetrics, fetchHalaqahStats } from "@/lib/teacher-app";
 
 const badge = { id: 3, mosqueId: 1, name: "نجم الأسبوع", icon: "⭐", description: "", criteriaNote: "", createdAt: "", awardCount: 1 };
 const award = {
@@ -130,6 +130,7 @@ beforeEach(() => {
   vi.mocked(db.listBadgeTopBetween).mockResolvedValue([{ icon: "⭐", name: "نجم الأسبوع", count: 3 }]);
   vi.mocked(db.countActivitiesBetween).mockResolvedValue(0);
   vi.mocked(fetchHalaqahStats).mockResolvedValue({ activeStudents: 10, totalPages: 100, avgPages: 10, avgMastery: 80 });
+  vi.mocked(fetchHalaqahMetrics).mockResolvedValue(null);
 });
 
 describe("البوابة: 401 لجامع آخر، 404 لميزة معطّلة", () => {

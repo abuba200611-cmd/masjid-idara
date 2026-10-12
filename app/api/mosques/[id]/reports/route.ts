@@ -1,6 +1,7 @@
 import { featureGate, parsePositiveIntParam, paramNotFound } from "@/lib/api-gate";
 import { isPeriodChoice, resolvePeriod } from "@/lib/report-periods";
-import { fetchHalaqahStats, type HalaqahStats } from "@/lib/teacher-app";
+import { fetchHalaqahMetrics, fetchHalaqahStats, type HalaqahStats } from "@/lib/teacher-app";
+import type { HalaqahMetrics } from "@/lib/honor-board";
 import {
   countActivitiesBetween,
   countBadgeAwardsBetween,
@@ -49,13 +50,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   );
 
   const halaqahs = halaqatOn ? await listHalaqahs(mosqueId) : [];
-  const stats = await Promise.all(halaqahs.map(async (halaqah): Promise<HalaqahStats | null> => {
-    try {
-      return await fetchHalaqahStats(halaqah.inviteCode);
-    } catch {
-      return null;
-    }
-  }));
+  // إحصائيات كل حلقة + مقاييس فترة التقرير من نظام المعلّم بالتوازي — تعذّر أحدهما لا يكسر البقية
+  const [stats, metrics] = await Promise.all([
+    Promise.all(
+      halaqahs.map(async (halaqah): Promise<HalaqahStats | null> => {
+        try {
+          return await fetchHalaqahStats(halaqah.inviteCode);
+        } catch {
+          return null;
+        }
+      }),
+    ),
+    Promise.all(
+      halaqahs.map(async (halaqah): Promise<HalaqahMetrics | null> => {
+        try {
+          return await fetchHalaqahMetrics(halaqah.inviteCode, period.from, period.to);
+        } catch {
+          return null;
+        }
+      }),
+    ),
+  ]);
   const reachable = stats.filter((s): s is HalaqahStats => s !== null);
 
   const [pending, families, committeeSummaries, familySummaries, studentSummaries, badgesAwarded, badgeTop, activities] =
@@ -109,6 +124,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       activeStudents: stats[index]?.activeStudents ?? null,
       avgMastery: stats[index]?.avgMastery ?? null,
       totalPages: stats[index]?.totalPages ?? null,
+      metrics:
+        metrics[index] === null
+          ? null
+          : {
+              attendanceRate: (metrics[index] as HalaqahMetrics).totals.attendanceRate,
+              wardsSubmitted: (metrics[index] as HalaqahMetrics).totals.wardsSubmitted,
+              wardsApproved: (metrics[index] as HalaqahMetrics).totals.wardsApproved,
+              planOnTrackRatio: (metrics[index] as HalaqahMetrics).totals.planOnTrackRatio,
+              recitationsCount: (metrics[index] as HalaqahMetrics).totals.recitations.count,
+              recitationsAvgScore: (metrics[index] as HalaqahMetrics).totals.recitations.avgScore,
+            },
     })),
   });
 }
