@@ -1412,6 +1412,27 @@ export async function listBadgeTopBetween(
   return rows.map((row) => ({ icon: row.icon as string, name: row.name as string, count: row.count as number }));
 }
 
+/** أوسمة الطلاب الممنوحة خلال الفترة (أساس درجة البرامج بلوحة الشرف) */
+export async function listStudentBadgeAwardsBetween(
+  mosqueId: number,
+  from: string,
+  to: string,
+): Promise<{ targetId: number; name: string; icon: string }[]> {
+  const rows = await db().sql`
+    SELECT ba.target_id, b.name, b.icon
+    FROM badge_awards ba
+    JOIN badges b ON b.id = ba.badge_id AND b.mosque_id = ${mosqueId}
+    WHERE ba.mosque_id = ${mosqueId} AND ba.target_kind = 'student'
+      AND ba.awarded_at >= ${from}::date AND ba.awarded_at <= ${to}::date
+    ORDER BY ba.awarded_at, ba.id
+  `;
+  return rows.map((row) => ({
+    targetId: row.target_id as number,
+    name: row.name as string,
+    icon: row.icon as string,
+  }));
+}
+
 /** عدد الأنشطة المؤرَّخة (activity_date) خلال الفترة */
 export async function countActivitiesBetween(mosqueId: number, from: string, to: string): Promise<number> {
   const rows = await db().sql`

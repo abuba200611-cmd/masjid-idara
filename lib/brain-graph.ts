@@ -19,7 +19,9 @@ import {
 } from "./db";
 import { parseLinks } from "./brain";
 import type { GraphEdge, GraphNode, MosqueGraph, NodeType } from "./graph-types";
-import { fetchHalaqahRoster, type Roster } from "./teacher-app";
+import { fetchHalaqahMetrics, fetchHalaqahRoster, type Roster } from "./teacher-app";
+import { normalizeStudentName, type HalaqahMetrics, type MetricsStudent } from "./honor-board";
+import { currentWeekPeriod } from "./report-periods";
 
 /*
   الدماغ: رسم بياني يُبنى تلقائياً من بيانات الجامع الفعلية (لا كتابة يدوية).
@@ -60,32 +62,67 @@ const mosqueSource: GraphSource = async (mosqueId) => {
   };
 };
 
-/** الحلقات + معلّموها + طلابها (قائمة كل حلقة من نظام المعلّم، بالتوازي، والفشل لا يرمي) */
+/** نداء لنظام المعلّم لا يرمي أبداً — فشله يُسقط مصدره فقط */
+async function safeCall<T>(call: () => Promise<T>): Promise<T | null> {
+  try {
+    return await call();
+  } catch {
+    return null;
+  }
+}
+
+/** متوسطا الحلقة (حضور من الإجماليات، تفاعل من طلابها) — لأوصل عقدتها ونص السياق */
+function halaqahMetaMetrics(metrics: HalaqahMetrics | null): { attendanceRate?: number; avgEngagement?: number } {
+  if (!metrics) return {};
+  const meta: { attendanceRate?: number; avgEngagement?: number } = {};
+  if (metrics.totals.attendanceRate !== null) meta.attendanceRate = metrics.totals.attendanceRate;
+  if (metrics.students.length > 0) {
+    meta.avgEngagement = Math.round(
+      metrics.students.reduce((sum, student) => sum + Math.min(100, Math.max(0, student.engagementScore)), 0) /
+        metrics.students.length,
+    );
+  }
+  return meta;
+}
+
+/** فهرس طلاب المقاييس بالاسم المُطبَّع — مطابقة قائمة الحلقة بمقاييسهم (لا معرّف مشتركاً بين النظامين) */
+function metricsStudentsByName(metrics: HalaqahMetrics | null): Map<string, MetricsStudent | null> {
+  const index = new Map<string, MetricsStudent | null>();
+  for (const student of metrics?.students ?? []) {
+    const key = normalizeStudentName(student.name);
+    index.set(key, index.has(key) ? null : student); // اسم مكرر = غموض: لا مقاييس لأحدهما
+  }
+  return index;
+}
+
+/** الحلقات + معلّموها + طلابها (قائمة كل حلقة ومقاييس أسبوعها من نظام المعلّم، بالتوازي، والفشل لا يرمي) */
 const halaqatSource: GraphSource = async (mosqueId) => {
   const halaqahs = await listHalaqahs(mosqueId);
-  const rosters = await Promise.all(
-    halaqahs.map(async (halaqah): Promise<Roster | null> => {
-      try {
-        return await fetchHalaqahRoster(halaqah.inviteCode);
-      } catch {
-        return null;
-      }
+  const week = currentWeekPeriod();
+  const loads = await Promise.all(
+    halaqahs.map(async (halaqah): Promise<{ roster: Roster | null; metrics: HalaqahMetrics | null }> => {
+      const [roster, metrics] = await Promise.all([
+        safeCall(() => fetchHalaqahRoster(halaqah.inviteCode)),
+        safeCall(() => fetchHalaqahMetrics(halaqah.inviteCode, week.from, week.to)),
+      ]);
+      return { roster: roster ?? null, metrics: metrics ?? null };
     }),
   );
 
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   halaqahs.forEach((halaqah, index) => {
-    const roster = rosters[index];
+    const { roster, metrics } = loads[index];
     const id = halaqahNodeId(halaqah.id);
     const teacherName = roster?.teacherName || halaqah.teacherName;
+    const byName = metricsStudentsByName(metrics);
 
     nodes.push({
       id,
       type: "halaqah",
       label: halaqah.halaqahName,
       meta: roster
-        ? { teacherName, studentCount: roster.students.length }
+        ? { teacherName, studentCount: roster.students.length, ...halaqahMetaMetrics(metrics) }
         : { teacherName, studentCount: 0, error: true },
     });
     edges.push({ source: mosqueNodeId(mosqueId), target: id, kind: "halaqah" });
@@ -96,11 +133,24 @@ const halaqatSource: GraphSource = async (mosqueId) => {
 
     roster?.students.forEach((student, studentIndex) => {
       const studentId = `student:${halaqah.id}:${studentIndex}`;
+      const metric = byName.get(normalizeStudentName(student.name));
       nodes.push({
         id: studentId,
         type: "student",
         label: student.name,
-        meta: { halaqah: halaqah.halaqahName, group: student.group, pages: student.pages, active: student.active },
+        meta: {
+          halaqah: halaqah.halaqahName,
+          group: student.group,
+          pages: student.pages,
+          active: student.active,
+          ...(metric
+            ? {
+                engagementScore: Math.round(Math.min(100, Math.max(0, metric.engagementScore))),
+                ...(metric.attendanceRate !== null ? { attendanceRate: metric.attendanceRate } : {}),
+                ...(metric.streak > 0 ? { streak: metric.streak } : {}),
+              }
+            : {}),
+        },
       });
       edges.push({ source: id, target: studentId, kind: "student" });
     });
@@ -303,7 +353,11 @@ export function buildGraphContext(graph: MosqueGraph): string {
     lines.push("", "الحلقات:");
     for (const halaqah of halaqahs) {
       const detail = halaqah.meta.error ? "تعذّر جلب الطلاب من نظام المعلّم" : `${halaqah.meta.studentCount} طالب`;
-      lines.push(`- ${halaqah.label} — المعلم: ${halaqah.meta.teacherName} — ${detail}`);
+      // متوسطات الأسبوع من مقاييس نظام المعلّم متى توفرت — يقرؤها الوكيل الذكي
+      const averages: string[] = [];
+      if (halaqah.meta.attendanceRate !== undefined) averages.push(`حضور ${halaqah.meta.attendanceRate}٪`);
+      if (halaqah.meta.avgEngagement !== undefined) averages.push(`تفاعل ${halaqah.meta.avgEngagement}٪`);
+      lines.push(`- ${halaqah.label} — المعلم: ${halaqah.meta.teacherName} — ${detail}${averages.length > 0 ? ` — ${averages.join("، ")}` : ""}`);
     }
   }
   return lines.join("\n");

@@ -66,13 +66,19 @@ export function hijriMonthLabel(date: Date): string {
   }).format(date);
 }
 
+/** نطاق الأسبوع الجاري (سبت→جمعة) — دائماً صالح، لمن يحتاج فترة بلا null */
+export function currentWeekPeriod(today = new Date()): ReportPeriod {
+  const base = saturdayOf(today);
+  return { from: formatWeek(base), to: formatWeek(addDays(base, 6)) };
+}
+
 /**
  * فترة التقرير حسب اختيار المستخدم — null لو الاختيار مجهول أو نطاق
  * custom ناقص/معكوس. كل التواريخ YYYY-MM-DD بأجزاء UTC حسمياً.
  */
 export function resolvePeriod(
   choice: PeriodChoice,
-  custom: { from?: unknown; to?: unknown },
+  custom: { from?: unknown; to?: unknown } = {},
   today = new Date(),
 ): ReportPeriod | null {
   const base = saturdayOf(today);
