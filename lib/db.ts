@@ -3,6 +3,7 @@ import "server-only";
 import { getDatabase } from "@netlify/database";
 import { randomBytes } from "node:crypto";
 import { FEATURES, type Feature } from "./features";
+import { MAX_PHOTOS_PER_MOSQUE, type TagKind } from "./archive";
 
 /*
   نظام إدارة الجامع — طبقة تنظيمية فوق halaqat-tahfeez، قاعدة بيانات
@@ -939,4 +940,205 @@ export async function upsertEvaluations(
       `),
     );
   }
+}
+
+// ————— أرشيف الأنشطة: أنشطة بصور (BYTEA مضغوطة) وروابط فيديو —————
+// البايتات تُمرَّر وتُقرأ base64 عبر decode/encode حتى لا نعتمد على طريقة سائق
+// القاعدة (pg أو neon-http) بترميز BYTEA.
+
+export type Activity = {
+  id: number;
+  mosqueId: number;
+  title: string;
+  description: string;
+  activityDate: string;
+  tagKind: TagKind | null;
+  tagId: number | null;
+  tagName: string | null;
+  createdAt: string;
+  photoCount: number;
+  videoCount: number;
+  coverMediaId: number | null;
+};
+
+function rowToActivity(row: Record<string, unknown>): Activity {
+  return {
+    id: row.id as number,
+    mosqueId: row.mosque_id as number,
+    title: row.title as string,
+    description: row.description as string,
+    activityDate: row.activity_date as string,
+    tagKind: (row.tag_kind as TagKind | null) ?? null,
+    tagId: (row.tag_id as number | null) ?? null,
+    tagName: (row.tag_name as string | null) ?? null,
+    createdAt: row.created_at as string,
+    photoCount: (row.photo_count as number) ?? 0,
+    videoCount: (row.video_count as number) ?? 0,
+    coverMediaId: (row.cover_media_id as number | null) ?? null,
+  };
+}
+
+/** أنشطة الجامع الأحدث أولاً، باسم الوسم وغلاف (أول صورة) وعدّادات */
+export async function listActivities(mosqueId: number): Promise<Activity[]> {
+  const rows = await db().sql`
+    SELECT a.id, a.mosque_id, a.title, a.description, a.activity_date::text AS activity_date,
+           a.tag_kind, a.tag_id, a.created_at,
+           CASE a.tag_kind
+             WHEN 'halaqah'   THEN (SELECT halaqah_name FROM halaqahs  WHERE id = a.tag_id AND mosque_id = a.mosque_id)
+             WHEN 'family'    THEN (SELECT name FROM families   WHERE id = a.tag_id AND mosque_id = a.mosque_id)
+             WHEN 'committee' THEN (SELECT name FROM committees WHERE id = a.tag_id AND mosque_id = a.mosque_id)
+           END AS tag_name,
+           (SELECT count(*)::int FROM activity_media m WHERE m.activity_id = a.id AND m.kind = 'photo') AS photo_count,
+           (SELECT count(*)::int FROM activity_media m WHERE m.activity_id = a.id AND m.kind = 'video_link') AS video_count,
+           (SELECT m.id FROM activity_media m WHERE m.activity_id = a.id AND m.kind = 'photo'
+            ORDER BY m.sort_order, m.id LIMIT 1) AS cover_media_id
+    FROM activities a
+    WHERE a.mosque_id = ${mosqueId}
+    ORDER BY a.activity_date DESC, a.id DESC
+  `;
+  return rows.map(rowToActivity);
+}
+
+export async function getActivity(mosqueId: number, id: number): Promise<Activity | null> {
+  const rows = await db().sql`
+    SELECT a.id, a.mosque_id, a.title, a.description, a.activity_date::text AS activity_date,
+           a.tag_kind, a.tag_id, a.created_at,
+           CASE a.tag_kind
+             WHEN 'halaqah'   THEN (SELECT halaqah_name FROM halaqahs  WHERE id = a.tag_id AND mosque_id = a.mosque_id)
+             WHEN 'family'    THEN (SELECT name FROM families   WHERE id = a.tag_id AND mosque_id = a.mosque_id)
+             WHEN 'committee' THEN (SELECT name FROM committees WHERE id = a.tag_id AND mosque_id = a.mosque_id)
+           END AS tag_name,
+           (SELECT count(*)::int FROM activity_media m WHERE m.activity_id = a.id AND m.kind = 'photo') AS photo_count,
+           (SELECT count(*)::int FROM activity_media m WHERE m.activity_id = a.id AND m.kind = 'video_link') AS video_count,
+           (SELECT m.id FROM activity_media m WHERE m.activity_id = a.id AND m.kind = 'photo'
+            ORDER BY m.sort_order, m.id LIMIT 1) AS cover_media_id
+    FROM activities a
+    WHERE a.mosque_id = ${mosqueId} AND a.id = ${id}
+  `;
+  return rows[0] ? rowToActivity(rows[0]) : null;
+}
+
+/** هل الوسم (حلقة/أسرة/لجنة) موجود في هذا الجامع نفسه؟ */
+export async function tagBelongsToMosque(mosqueId: number, kind: TagKind, tagId: number): Promise<boolean> {
+  const rows =
+    kind === "halaqah"
+      ? await db().sql`SELECT id FROM halaqahs WHERE mosque_id = ${mosqueId} AND id = ${tagId}`
+      : kind === "family"
+        ? await db().sql`SELECT id FROM families WHERE mosque_id = ${mosqueId} AND id = ${tagId}`
+        : await db().sql`SELECT id FROM committees WHERE mosque_id = ${mosqueId} AND id = ${tagId}`;
+  return rows.length > 0;
+}
+
+export async function createActivity(
+  mosqueId: number,
+  input: { title: string; description: string; activityDate: string; tagKind: TagKind | null; tagId: number | null },
+): Promise<number> {
+  const rows = await db().sql`
+    INSERT INTO activities (mosque_id, title, description, activity_date, tag_kind, tag_id)
+    VALUES (${mosqueId}, ${input.title}, ${input.description}, ${input.activityDate}::date,
+            ${input.tagKind}::text, ${input.tagId}::int)
+    RETURNING id
+  `;
+  return Number(rows[0].id);
+}
+
+/** حذف النشاط يزيل وسائطه معه (تسلسل بالقاعدة) */
+export async function deleteActivity(mosqueId: number, id: number): Promise<boolean> {
+  const rows = await db().sql`DELETE FROM activities WHERE mosque_id = ${mosqueId} AND id = ${id} RETURNING id`;
+  return rows.length > 0;
+}
+
+export type ActivityMedia = {
+  id: number;
+  kind: "photo" | "video_link";
+  mime: string | null;
+  sizeBytes: number | null;
+  url: string | null;
+};
+
+/** وسائط النشاط بلا البايتات (الصورة تُجلب من مسارها) */
+export async function listActivityMedia(mosqueId: number, activityId: number): Promise<ActivityMedia[]> {
+  const rows = await db().sql`
+    SELECT id, kind, mime, size_bytes, url
+    FROM activity_media
+    WHERE mosque_id = ${mosqueId} AND activity_id = ${activityId}
+    ORDER BY sort_order, id
+  `;
+  return rows.map((row) => ({
+    id: row.id as number,
+    kind: row.kind as ActivityMedia["kind"],
+    mime: (row.mime as string | null) ?? null,
+    sizeBytes: (row.size_bytes as number | null) ?? null,
+    url: (row.url as string | null) ?? null,
+  }));
+}
+
+export async function countMosquePhotos(mosqueId: number): Promise<number> {
+  const rows = await db().sql`
+    SELECT count(*)::int AS n FROM activity_media WHERE mosque_id = ${mosqueId} AND kind = 'photo'
+  `;
+  return Number(rows[0]?.n ?? 0);
+}
+
+/**
+ * إضافة صورة — الحد الأعلى للجامع يُفرض داخل نفس جملة الإدراج (لا سباق بين
+ * رفعين متزامنين). "full" لو امتلأ الحد، null لو النشاط ليس من هذا الجامع.
+ */
+export async function addActivityPhoto(
+  mosqueId: number,
+  activityId: number,
+  mime: string,
+  data: Uint8Array,
+): Promise<{ id: number } | "full" | null> {
+  const b64 = Buffer.from(data).toString("base64");
+  const rows = await db().sql`
+    INSERT INTO activity_media (activity_id, mosque_id, kind, mime, bytes, size_bytes, sort_order)
+    SELECT ${activityId}::int, ${mosqueId}::int, 'photo', ${mime}::text, decode(${b64}::text, 'base64'), ${data.length}::int,
+           (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM activity_media WHERE activity_id = ${activityId})
+    WHERE EXISTS (SELECT 1 FROM activities WHERE id = ${activityId} AND mosque_id = ${mosqueId})
+      AND (SELECT count(*) FROM activity_media WHERE mosque_id = ${mosqueId} AND kind = 'photo') < ${MAX_PHOTOS_PER_MOSQUE}
+    RETURNING id
+  `;
+  if (rows[0]) return { id: Number(rows[0].id) };
+  const exists = await db().sql`SELECT id FROM activities WHERE id = ${activityId} AND mosque_id = ${mosqueId}`;
+  return exists[0] ? "full" : null;
+}
+
+export async function addActivityVideoLink(
+  mosqueId: number,
+  activityId: number,
+  url: string,
+): Promise<{ id: number } | null> {
+  const rows = await db().sql`
+    INSERT INTO activity_media (activity_id, mosque_id, kind, url, sort_order)
+    SELECT ${activityId}::int, ${mosqueId}::int, 'video_link', ${url}::text,
+           (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM activity_media WHERE activity_id = ${activityId})
+    WHERE EXISTS (SELECT 1 FROM activities WHERE id = ${activityId} AND mosque_id = ${mosqueId})
+    RETURNING id
+  `;
+  return rows[0] ? { id: Number(rows[0].id) } : null;
+}
+
+/** بايتات صورة بنوعها المخزَّن — مقيّدة بالجامع والنشاط */
+export async function getActivityPhoto(
+  mosqueId: number,
+  activityId: number,
+  mediaId: number,
+): Promise<{ mime: string; data: Buffer } | null> {
+  const rows = await db().sql`
+    SELECT mime, encode(bytes, 'base64') AS b64
+    FROM activity_media
+    WHERE id = ${mediaId} AND activity_id = ${activityId} AND mosque_id = ${mosqueId} AND kind = 'photo'
+  `;
+  const row = rows[0];
+  return row ? { mime: row.mime as string, data: Buffer.from(row.b64 as string, "base64") } : null;
+}
+
+export async function deleteActivityMedia(mosqueId: number, activityId: number, mediaId: number): Promise<boolean> {
+  const rows = await db().sql`
+    DELETE FROM activity_media
+    WHERE id = ${mediaId} AND activity_id = ${activityId} AND mosque_id = ${mosqueId}
+    RETURNING id
+  `;
+  return rows.length > 0;
 }
