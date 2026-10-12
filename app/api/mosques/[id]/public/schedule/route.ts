@@ -15,5 +15,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: "الجدول غير متاح لهذا الجامع" }, { status: 404 });
   }
 
-  return Response.json({ name: mosque.name, city: mosque.city, slots: await listScheduleSlots(mosqueId) });
+  // حقول الجدول العامة فقط — بلا mosqueId/refId/createdAt الداخلية
+  const slots = (await listScheduleSlots(mosqueId)).map(
+    ({ id, dayOfWeek, period, startTime, title, programKind, location, notes }) => ({
+      id,
+      dayOfWeek,
+      period,
+      startTime,
+      title,
+      programKind,
+      location,
+      notes,
+    }),
+  );
+  return Response.json({ name: mosque.name, city: mosque.city, slots });
 }

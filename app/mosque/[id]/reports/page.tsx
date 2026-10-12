@@ -297,7 +297,9 @@ function TopTable({
 /** CSV بترميز UTF-8 مع BOM حتى تفتح العربية سليمة ببرامج الجداول */
 function exportCsv(filename: string, headers: string[], rows: (string | number)[][]) {
   const escape = (value: string | number) => {
-    const text = String(value);
+    let text = String(value);
+    // حقن الصيغ في برامج الجداول: خلية نصية تبدأ بـ = + - @ (أو tab/CR) تُسبق بـ '
+    if (/^[=+@\t\r-]/.test(text) && !/^-?\d+(\.\d+)?%?$/.test(text)) text = `'${text}`;
     return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   const csv = `\uFEFF${[headers, ...rows].map((row) => row.map(escape).join(",")).join("\r\n")}`;

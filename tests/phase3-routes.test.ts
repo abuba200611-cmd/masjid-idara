@@ -128,7 +128,7 @@ beforeEach(() => {
   vi.mocked(db.listEvaluationSummaries).mockResolvedValue([]);
   vi.mocked(db.countBadgeAwardsBetween).mockResolvedValue(6);
   vi.mocked(db.listBadgeTopBetween).mockResolvedValue([{ icon: "⭐", name: "نجم الأسبوع", count: 3 }]);
-  vi.mocked(db.countActivitiesBetween).mockResolvedValue(null);
+  vi.mocked(db.countActivitiesBetween).mockResolvedValue(0);
   vi.mocked(fetchHalaqahStats).mockResolvedValue({ activeStudents: 10, totalPages: 100, avgPages: 10, avgMastery: 80 });
 });
 
@@ -371,7 +371,11 @@ describe("الجدول العام (بلا صلاحية)", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.name).toBe("جامع النور");
-    expect(body.slots).toEqual([slot]);
+    expect(body.slots).toHaveLength(1);
+    expect(body.slots[0]).not.toHaveProperty("mosqueId");
+    expect(body.slots[0]).not.toHaveProperty("refId");
+    expect(body.slots[0]).not.toHaveProperty("createdAt");
+    expect(body.slots[0].title).toBe(slot.title);
     expect(db.listScheduleSlots).toHaveBeenCalledWith(1);
   });
 });

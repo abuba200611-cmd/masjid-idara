@@ -42,8 +42,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const mosque = await getMosque(mosqueId);
   if (!mosque) return Response.json({ error: "الجامع غير موجود" }, { status: 404 });
 
-  const [halaqatOn, registrationOn, familiesOn, committeesOn, evaluationOn, badgesOn] = await Promise.all(
-    (["halaqat", "registration", "families", "committees", "weekly_evaluation", "badges"] as const).map((key) =>
+  const [halaqatOn, registrationOn, familiesOn, committeesOn, evaluationOn, badgesOn, archiveOn] = await Promise.all(
+    (["halaqat", "registration", "families", "committees", "weekly_evaluation", "badges", "archive"] as const).map((key) =>
       isFeatureEnabled(mosqueId, key),
     ),
   );
@@ -67,7 +67,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       evaluationOn ? listEvaluationSummaries(mosqueId, period.from, period.to, "student") : Promise.resolve([]),
       badgesOn ? countBadgeAwardsBetween(mosqueId, period.from, period.to) : Promise.resolve(0),
       badgesOn ? listBadgeTopBetween(mosqueId, period.from, period.to) : Promise.resolve([]),
-      countActivitiesBetween(mosqueId, period.from, period.to),
+      archiveOn ? countActivitiesBetween(mosqueId, period.from, period.to) : Promise.resolve(null),
     ]);
 
   const totals = [...familySummaries, ...studentSummaries].reduce(
