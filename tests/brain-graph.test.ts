@@ -11,6 +11,8 @@ vi.mock("@/lib/db", () => ({
   listActivities: vi.fn(),
   getMosqueFeatures: vi.fn(),
   isFeatureEnabled: vi.fn(),
+  listBadgeAwardLinks: vi.fn(),
+  listBadges: vi.fn(),
   listBrainNotes: vi.fn(),
   listCommitteeMemberLinks: vi.fn(),
   listCommittees: vi.fn(),
@@ -27,6 +29,8 @@ import {
   listActivities,
   getMosqueFeatures,
   isFeatureEnabled,
+  listBadgeAwardLinks,
+  listBadges,
   listBrainNotes,
   listCommitteeMemberLinks,
   listCommittees,
@@ -79,6 +83,8 @@ beforeEach(() => {
   vi.mocked(listCommittees).mockResolvedValue([]);
   vi.mocked(listActivities).mockResolvedValue([]);
   vi.mocked(listCommitteeMemberLinks).mockResolvedValue([]);
+  vi.mocked(listBadges).mockResolvedValue([]);
+  vi.mocked(listBadgeAwardLinks).mockResolvedValue([]);
   vi.mocked(getMosqueFeatures).mockResolvedValue([
     { key: "halaqat", nameAr: "الحلقات", descriptionAr: "", defaultEnabled: true, status: "ready", enabled: true },
     { key: "stats", nameAr: "الإحصائيات", descriptionAr: "", defaultEnabled: true, status: "ready", enabled: false },
@@ -195,6 +201,39 @@ describe("مصادر الأسر واللجان", () => {
     expect(graph.nodes.filter((n) => n.id === "member:9")).toHaveLength(1);
     expect(graph.edges).toContainEqual({ source: "committee:7", target: "member:9", kind: "committee-member" });
     expect(buildGraphContext(graph)).toContain("اللجان: 1");
+  });
+});
+
+describe("مصدر الأوسمة", () => {
+  const badge = { id: 3, mosqueId: 1, name: "نجم الأسبوع", icon: "⭐", description: "", criteriaNote: "", createdAt: "", awardCount: 2 };
+
+  it("الميزة معطّلة: لا عُقد أوسمة ولا استعلامات لها", async () => {
+    const graph = await buildMosqueGraph(1);
+    expect(graph.nodes.some((n) => n.type === "badge")).toBe(false);
+    expect(listBadges).not.toHaveBeenCalled();
+  });
+
+  it("وسام ← أهدافه: الطالب بعقدة التسجيل والعضو الحر بعقدته والأسرة بعقدتها", async () => {
+    vi.mocked(isFeatureEnabled).mockImplementation(async (_id, key) => key === "badges");
+    vi.mocked(listBadges).mockResolvedValue([badge]);
+    vi.mocked(listBadgeAwardLinks).mockResolvedValue([
+      { badgeId: 3, badgeName: "نجم الأسبوع", icon: "⭐", targetKind: "student", targetId: 1, targetName: "طالب 1" },
+      { badgeId: 3, badgeName: "نجم الأسبوع", icon: "⭐", targetKind: "member", targetId: 9, targetName: "أبو خالد" },
+      { badgeId: 3, badgeName: "نجم الأسبوع", icon: "⭐", targetKind: "family", targetId: 5, targetName: "أسرة النور" },
+    ]);
+    // عُقد الأهداف يجب أن توجد من مصدر آخر وإلا حُذفت الحافة
+    vi.mocked(listPendingStudents).mockResolvedValue([pending(1, "pending", null)]);
+
+    const graph = await buildMosqueGraph(1);
+    const badgeNode = graph.nodes.find((n) => n.id === "badge:3");
+    expect(badgeNode?.type).toBe("badge");
+    expect(badgeNode?.label).toContain("نجم الأسبوع");
+    // حافة الطالب موجودة (عقدته من مصدر التسجيل)، والعضو الحر والأسرة لا: عُقدهما غير موجودة
+    expect(graph.edges).toContainEqual({ source: "badge:3", target: "pending:1", kind: "badge" });
+    expect(graph.edges.some((e) => e.target === "member:9" || e.target === "family:5")).toBe(false);
+    expect(buildGraphContext(graph)).toContain("الأوسمة: 1");
+    expect(listBadges).toHaveBeenCalledWith(1);
+    expect(listBadgeAwardLinks).toHaveBeenCalledWith(1);
   });
 });
 

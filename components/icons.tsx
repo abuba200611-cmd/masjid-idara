@@ -151,6 +151,33 @@ export function StarIcon({ className = base }: IconProps) {
   );
 }
 
+export function AwardIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <circle cx="12" cy="9" r="5.5" />
+      <path d="m8.5 13.5-1.5 7 5-2.5 5 2.5-1.5-7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function CalendarIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <rect x="4" y="5.5" width="16" height="15" rx="2" />
+      <path d="M8 3.5v4M16 3.5v4M4 10h16" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function ChartIcon({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M4 20h16" strokeLinecap="round" />
+      <path d="M7 20v-6M12 20V6M17 20v-9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ImageIcon({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>

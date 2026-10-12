@@ -3,13 +3,13 @@ import { createMosqueMember, listMosqueMembers, listPendingStudents, type Mosque
 
 /*
   دليل أفراد الجامع: الطلاب (pending_students) + الأعضاء الأحرار —
-  تخدمه ميزتا الأسر واللجان معاً، فالبوابة تكتفي بإحداهما.
+  تخدمه الأسر واللجان والأوسمة معاً، فالبوابة تكتفي بإحداها.
 */
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const mosqueId = parsePositiveIntParam((await params).id);
   if (mosqueId === null) return paramNotFound();
-  const gate = await featureGateAny(mosqueId, ["families", "committees"]);
+  const gate = await featureGateAny(mosqueId, ["families", "committees", "badges"]);
   if (gate) return gate;
 
   const [students, members] = await Promise.all([
@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const mosqueId = parsePositiveIntParam((await params).id);
   if (mosqueId === null) return paramNotFound();
-  const gate = await featureGateAny(mosqueId, ["families", "committees"]);
+  const gate = await featureGateAny(mosqueId, ["families", "committees", "badges"]);
   if (gate) return gate;
 
   const body = (await request.json().catch(() => ({}))) as {

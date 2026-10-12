@@ -3,8 +3,8 @@ import { FEATURES, effectiveFeatures, getFeature } from "../lib/features";
 
 /** سجل المزايا — الافتراضيات والمفاتيح وحالات "قريباً" */
 describe("سجل المزايا", () => {
-  it("الأسر واللجان والتقييم الأسبوعي جاهزة وغير مفعّلة افتراضياً", () => {
-    for (const key of ["families", "committees", "weekly_evaluation"]) {
+  it("الأسر واللجان والتقييم والأوسمة والجدول والتقارير جاهزة وغير مفعّلة افتراضياً", () => {
+    for (const key of ["families", "committees", "weekly_evaluation", "badges", "weekly_schedule", "reports"]) {
       expect(getFeature(key)?.status, key).toBe("ready");
       expect(getFeature(key)?.defaultEnabled, key).toBe(false);
     }
@@ -25,12 +25,12 @@ describe("سجل المزايا", () => {
   });
 
   it("المزايا القادمة (soon) لا يمكن تفعيلها", () => {
-    const soonKeys = ["badges", "weekly_schedule", "reports", "agent"];
+    const soonKeys = ["agent"];
     for (const key of soonKeys) {
       const feature = getFeature(key);
       expect(feature, key).toBeDefined();
       expect(feature?.status).toBe("soon");
-      expect(feature?.defaultEnabled).toBe(false);
+      expect(feature?.defaultEnabled, key).toBe(false);
     }
   });
 

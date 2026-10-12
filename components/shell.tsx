@@ -81,15 +81,15 @@ export function DashboardShell({
   );
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex min-h-screen w-full print:block">
       {/* سايدبار ثابت — شاشات واسعة فقط */}
-      <aside className="hidden w-60 shrink-0 flex-col bg-foreground px-3 py-5 text-white lg:flex">
+      <aside className="hidden w-60 shrink-0 flex-col bg-foreground px-3 py-5 text-white lg:flex print:hidden">
         {sidebarContent}
       </aside>
 
       {/* درج منزلق — جوال/تابلت */}
       {open && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-40 lg:hidden print:hidden">
           <button
             aria-label="إغلاق القائمة"
             onClick={() => setOpen(false)}
@@ -102,7 +102,7 @@ export function DashboardShell({
       )}
 
       <div className="min-w-0 flex-1">
-        <header className="border-b border-border bg-surface px-4 py-4 sm:px-6">
+        <header className="border-b border-border bg-surface px-4 py-4 sm:px-6 print:hidden">
           <div className="mx-auto flex max-w-5xl items-center gap-3">
             <button
               onClick={() => setOpen(true)}
