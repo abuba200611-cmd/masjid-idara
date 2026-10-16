@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       // الصفحة الرئيسية → لوحة المطوّر بالمنصة الجديدة
-      { source: "/", destination: `${PLATFORM}/dev`, permanent: false },
+      { source: "/", destination: "https://mos-dev-console.vercel.app/dev", permanent: false },
       // دخول مدير الجامع — المسار نفسه بالمنصة الجديدة
       { source: "/mosque-login", destination: `${PLATFORM}/mosque-login`, permanent: false },
       // لوحات الجوامع (المشرف العام ومدراء الجوامع)
