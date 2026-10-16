@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
       // دخول مدير الجامع — المسار نفسه بالمنصة الجديدة
       { source: "/mosque-login", destination: `${PLATFORM}/mosque-login`, permanent: false },
       // لوحات الجوامع (المشرف العام ومدراء الجوامع)
+      // معرّفات الجوامع تغيّرت عند النقل (merge_id_map): 9→2، 16→3
+      { source: "/mosque/9/:path*", destination: `${PLATFORM}/mosque/2/:path*`, permanent: false },
+      { source: "/mosque/16/:path*", destination: `${PLATFORM}/mosque/3/:path*`, permanent: false },
+      { source: "/j/9/:path*", destination: `${PLATFORM}/j/2/:path*`, permanent: false },
+      { source: "/j/16/:path*", destination: `${PLATFORM}/j/3/:path*`, permanent: false },
       { source: "/mosque/:path*", destination: `${PLATFORM}/mosque/:path*`, permanent: false },
       // روابط الدعوة العامة للتسجيل (رمز الدعوة بالمسار نفسه)
       { source: "/j/:path*", destination: `${PLATFORM}/j/:path*`, permanent: false },
