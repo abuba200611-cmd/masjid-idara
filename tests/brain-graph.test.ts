@@ -73,7 +73,7 @@ const note = (slug: string, body: string) => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(getMosque).mockResolvedValue({ id: 1, name: "جامع النور", city: "جدة", createdAt: "" });
+  vi.mocked(getMosque).mockResolvedValue({ id: 1, name: "جامع النور", city: "مكة", createdAt: "" });
   vi.mocked(listHalaqahs).mockResolvedValue([halaqah(10, "الفجر", "A"), halaqah(11, "العصر", "B")]);
   vi.mocked(listPendingStudents).mockResolvedValue([]);
   vi.mocked(listBrainNotes).mockResolvedValue([]);

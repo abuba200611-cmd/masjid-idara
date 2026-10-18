@@ -36,7 +36,7 @@ import {
 } from "@/lib/db";
 
 const SECRET = "s3cret-value";
-const MOSQUE = { id: 5, name: "جامع النور", city: "جدة", createdAt: "" };
+const MOSQUE = { id: 5, name: "جامع النور", city: "مكة", createdAt: "" };
 
 function infoReq(code: string, secret?: string) {
   return new Request(`http://localhost/api/link/mosque-info?code=${code}`, {
@@ -90,7 +90,7 @@ describe("GET /api/link/mosque-info", () => {
   it("رمز صحيح = اسم الجامع ومدينته", async () => {
     const res = await mosqueInfo(infoReq("abc", SECRET));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ mosqueName: "جامع النور", city: "جدة" });
+    expect(await res.json()).toEqual({ mosqueName: "جامع النور", city: "مكة" });
   });
 });
 
